@@ -1,0 +1,23 @@
+# Binaries
+/nba-digest
+/bin/
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config.yaml
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Claude Code local settings
+.claude/settings.local.json
