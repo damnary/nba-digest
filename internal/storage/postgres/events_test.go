@@ -20,7 +20,7 @@ func seedGame(t *testing.T, store *Store, id core.GameID) core.Game {
 
 func testEvent(gameID core.GameID, seq int) core.Event {
 	return core.Event{
-		ID:         core.NewEventID(core.LeagueWNBA, gameID, core.EventRun, 3, seq),
+		ID:         core.NewEventID(gameID, core.EventRun, 3, seq),
 		GameID:     gameID,
 		League:     core.LeagueWNBA,
 		Kind:       core.EventRun,
@@ -45,16 +45,19 @@ func TestSaveEventsIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first save: %v", err)
 	}
-	if inserted != 2 {
-		t.Fatalf("want 2 inserted, got %d", inserted)
+	if len(inserted) != 2 {
+		t.Fatalf("want 2 inserted, got %d", len(inserted))
+	}
+	if inserted[0] != events[0].ID {
+		t.Errorf("returned id %q, want %q", inserted[0], events[0].ID)
 	}
 
 	inserted, err = store.SaveEvents(ctx, events)
 	if err != nil {
 		t.Fatalf("second save: %v", err)
 	}
-	if inserted != 0 {
-		t.Errorf("replay inserted %d events, want 0", inserted)
+	if len(inserted) != 0 {
+		t.Errorf("replay inserted %d events, want 0", len(inserted))
 	}
 
 	stored, err := store.EventsOfGame(ctx, "wnba:1")
@@ -66,35 +69,6 @@ func TestSaveEventsIsIdempotent(t *testing.T) {
 	}
 	if stored[0].Run.Points != 15 || stored[0].Teams[0] != "NYL" {
 		t.Errorf("event round-trip lost data: %+v", stored[0])
-	}
-}
-
-func TestCursorRoundTrip(t *testing.T) {
-	store := newTestStore(t)
-	ctx := t.Context()
-	seedGame(t, store, "wnba:1")
-
-	provider, token, err := store.Cursor(ctx, "wnba:1")
-	if err != nil {
-		t.Fatalf("empty cursor: %v", err)
-	}
-	if provider != "" || token != "" {
-		t.Errorf("want empty cursor, got %q/%q", provider, token)
-	}
-
-	if err := store.SetCursor(ctx, "wnba:1", "espn", "142"); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-	if err := store.SetCursor(ctx, "wnba:1", "espn", "175"); err != nil {
-		t.Fatalf("update: %v", err)
-	}
-
-	provider, token, err = store.Cursor(ctx, "wnba:1")
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if provider != "espn" || token != "175" {
-		t.Errorf("unexpected cursor %q/%q", provider, token)
 	}
 }
 

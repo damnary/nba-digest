@@ -25,8 +25,6 @@ type scoring struct {
 	points int
 }
 
-// buildPlays turns a scoring sequence into a play-by-play feed, keeping the
-// running score consistent.
 func buildPlays(period int, clock string, seq []scoring) []core.Play {
 	var (
 		plays      []core.Play
@@ -290,7 +288,6 @@ func TestDetectIsDeterministic(t *testing.T) {
 		}
 	}
 
-	// Re-running on a feed that grew must keep the ids of already known events.
 	extended := append(slicesClone(plays), core.Play{
 		Seq: len(plays) + 1, Period: 4, Clock: "00:20",
 		Team: "LVA", Points: 2, HomeScore: 15, AwayScore: 14, OccurredAt: baseTime.Add(time.Hour),

@@ -19,5 +19,3 @@ config.yaml
 .DS_Store
 *.swp
 
-# Claude Code local settings
-.claude/settings.local.json

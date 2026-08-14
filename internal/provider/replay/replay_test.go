@@ -74,7 +74,7 @@ func TestSpeedCompressesTheGame(t *testing.T) {
 	now := start
 	p := newProvider(t, &now, 60)
 
-	now = start.Add(51 * time.Second) // 51 minutes of game time
+	now = start.Add(51 * time.Second)
 	if game := gameAt(t, p); game.Status != core.GameFinal {
 		t.Errorf("at 60x the game should be over after 51s, got %s", game.Status)
 	}
@@ -123,7 +123,6 @@ func TestTeamsFromFixtures(t *testing.T) {
 	}
 }
 
-// The point of the replay provider: a full pipeline run with no network.
 func TestReplayFeedsTheDetector(t *testing.T) {
 	now := start.Add(3050 * time.Second)
 	p := newProvider(t, &now, 1)

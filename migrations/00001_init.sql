@@ -56,13 +56,6 @@ CREATE TABLE games (
 CREATE INDEX games_league_starts_at_idx ON games (league, starts_at);
 CREATE INDEX games_active_idx ON games (starts_at) WHERE status IN ('scheduled', 'live');
 
-CREATE TABLE game_cursors (
-    game_id      text PRIMARY KEY REFERENCES games (id) ON DELETE CASCADE,
-    provider     text NOT NULL,
-    cursor_token text NOT NULL,
-    updated_at   timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE game_events (
     id          text PRIMARY KEY,
     game_id     text NOT NULL REFERENCES games (id) ON DELETE CASCADE,
@@ -120,7 +113,6 @@ DROP TABLE digest_runs;
 DROP TABLE alert_deliveries;
 DROP TABLE game_player_stats;
 DROP TABLE game_events;
-DROP TABLE game_cursors;
 DROP TABLE games;
 DROP TABLE subscriptions;
 DROP TABLE subscribers;

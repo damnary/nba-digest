@@ -119,7 +119,6 @@ func TestGamesByDayRespectsTimezone(t *testing.T) {
 		t.Fatalf("load location: %v", err)
 	}
 
-	// 22:30 UTC on 27 July is 01:30 on 28 July in Moscow.
 	tipoff := time.Date(2026, 7, 27, 22, 30, 0, 0, time.UTC)
 	if err := store.UpsertGames(ctx, []core.Game{testGame("wnba:1", core.GameFinal, tipoff, 88, 81)}); err != nil {
 		t.Fatalf("upsert: %v", err)

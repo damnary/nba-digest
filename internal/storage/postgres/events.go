@@ -10,9 +10,9 @@ import (
 	"github.com/damnary/nba-digest/internal/core"
 )
 
-func (s *Store) SaveEvents(ctx context.Context, events []core.Event) (int, error) {
+func (s *Store) SaveEvents(ctx context.Context, events []core.Event) ([]core.EventID, error) {
 	if len(events) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	batch := &pgx.Batch{}
@@ -25,7 +25,8 @@ func (s *Store) SaveEvents(ctx context.Context, events []core.Event) (int, error
 			`INSERT INTO game_events (id, game_id, league, kind, teams, period, clock,
 			                          home_score, away_score, run_team, run_points, run_against, occurred_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-			 ON CONFLICT (id) DO NOTHING`,
+			 ON CONFLICT (id) DO NOTHING
+			 RETURNING id`,
 			string(e.ID), string(e.GameID), string(e.League), string(e.Kind), teams,
 			e.Period, e.Clock, e.HomeScore, e.AwayScore,
 			string(e.Run.Team), e.Run.Points, e.Run.Against, e.OccurredAt,
@@ -35,44 +36,18 @@ func (s *Store) SaveEvents(ctx context.Context, events []core.Event) (int, error
 	results := s.pool.SendBatch(ctx, batch)
 	defer results.Close()
 
-	inserted := 0
+	var inserted []core.EventID
 	for range events {
-		tag, err := results.Exec()
-		if err != nil {
-			return 0, fmt.Errorf("save events: %w", err)
+		var id core.EventID
+		switch err := results.QueryRow().Scan(&id); {
+		case errors.Is(err, pgx.ErrNoRows):
+			continue
+		case err != nil:
+			return nil, fmt.Errorf("save events: %w", err)
 		}
-		inserted += int(tag.RowsAffected())
+		inserted = append(inserted, id)
 	}
 	return inserted, nil
-}
-
-func (s *Store) Cursor(ctx context.Context, gameID core.GameID) (provider, token string, err error) {
-	err = s.pool.QueryRow(ctx,
-		`SELECT provider, cursor_token FROM game_cursors WHERE game_id = $1`, string(gameID),
-	).Scan(&provider, &token)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", nil
-	}
-	if err != nil {
-		return "", "", fmt.Errorf("query cursor for %s: %w", gameID, err)
-	}
-	return provider, token, nil
-}
-
-func (s *Store) SetCursor(ctx context.Context, gameID core.GameID, provider, token string) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO game_cursors (game_id, provider, cursor_token) VALUES ($1, $2, $3)
-		 ON CONFLICT (game_id) DO UPDATE SET
-		     provider = EXCLUDED.provider,
-		     cursor_token = EXCLUDED.cursor_token,
-		     updated_at = now()`,
-		string(gameID), provider, token,
-	)
-	if err != nil {
-		return fmt.Errorf("set cursor for %s: %w", gameID, err)
-	}
-	return nil
 }
 
 func (s *Store) EventsOfGame(ctx context.Context, gameID core.GameID) ([]core.Event, error) {
