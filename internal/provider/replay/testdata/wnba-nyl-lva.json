@@ -1,0 +1,31 @@
+{
+  "league": "wnba",
+  "game_id": "wnba:replay-1",
+  "starts_at": "2026-07-27T23:00:00Z",
+  "home": { "code": "NYL", "name": "New York Liberty" },
+  "away": { "code": "LVA", "name": "Las Vegas Aces" },
+  "plays": [
+    { "seq": 1,  "period": 1, "clock": "09:30", "team": "LVA", "player_id": "p3", "player_name": "A'ja Wilson",      "points": 3, "home_score": 0,  "away_score": 3,  "offset_seconds": 120 },
+    { "seq": 2,  "period": 1, "clock": "07:10", "team": "LVA", "player_id": "p3", "player_name": "A'ja Wilson",      "points": 3, "home_score": 0,  "away_score": 6,  "offset_seconds": 300 },
+    { "seq": 3,  "period": 1, "clock": "04:20", "team": "LVA", "player_id": "p4", "player_name": "Jackie Young",     "points": 2, "home_score": 0,  "away_score": 8,  "offset_seconds": 500 },
+    { "seq": 4,  "period": 1, "clock": "01:05", "team": "LVA", "player_id": "p4", "player_name": "Jackie Young",     "points": 2, "home_score": 0,  "away_score": 10, "offset_seconds": 700 },
+    { "seq": 5,  "period": 2, "clock": "08:40", "team": "NYL", "player_id": "p1", "player_name": "Sabrina Ionescu",  "points": 2, "home_score": 2,  "away_score": 10, "offset_seconds": 900 },
+    { "seq": 6,  "period": 2, "clock": "05:15", "team": "NYL", "player_id": "p2", "player_name": "Breanna Stewart",  "points": 3, "home_score": 5,  "away_score": 10, "offset_seconds": 1100 },
+    { "seq": 7,  "period": 2, "clock": "02:00", "team": "LVA", "player_id": "p3", "player_name": "A'ja Wilson",      "points": 2, "home_score": 5,  "away_score": 12, "offset_seconds": 1300 },
+    { "seq": 8,  "period": 3, "clock": "09:00", "team": "LVA", "player_id": "p3", "player_name": "A'ja Wilson",      "points": 3, "home_score": 5,  "away_score": 15, "offset_seconds": 1600 },
+    { "seq": 9,  "period": 3, "clock": "06:30", "team": "NYL", "player_id": "p1", "player_name": "Sabrina Ionescu",  "points": 3, "home_score": 8,  "away_score": 15, "offset_seconds": 1800 },
+    { "seq": 10, "period": 3, "clock": "03:10", "team": "LVA", "player_id": "p4", "player_name": "Jackie Young",     "points": 2, "home_score": 8,  "away_score": 17, "offset_seconds": 2000 },
+    { "seq": 11, "period": 4, "clock": "09:40", "team": "NYL", "player_id": "p1", "player_name": "Sabrina Ionescu",  "points": 3, "home_score": 11, "away_score": 17, "offset_seconds": 2300 },
+    { "seq": 12, "period": 4, "clock": "07:50", "team": "NYL", "player_id": "p2", "player_name": "Breanna Stewart",  "points": 3, "home_score": 14, "away_score": 17, "offset_seconds": 2450 },
+    { "seq": 13, "period": 4, "clock": "05:20", "team": "NYL", "player_id": "p1", "player_name": "Sabrina Ionescu",  "points": 3, "home_score": 17, "away_score": 17, "offset_seconds": 2600 },
+    { "seq": 14, "period": 4, "clock": "03:40", "team": "NYL", "player_id": "p2", "player_name": "Breanna Stewart",  "points": 3, "home_score": 20, "away_score": 17, "offset_seconds": 2750 },
+    { "seq": 15, "period": 4, "clock": "02:30", "team": "LVA", "player_id": "p3", "player_name": "A'ja Wilson",      "points": 2, "home_score": 20, "away_score": 19, "offset_seconds": 2900 },
+    { "seq": 16, "period": 4, "clock": "00:40", "team": "NYL", "player_id": "p1", "player_name": "Sabrina Ionescu",  "points": 2, "home_score": 22, "away_score": 19, "offset_seconds": 3050 }
+  ],
+  "box_score": [
+    { "player_id": "p1", "name": "Sabrina Ionescu", "team": "NYL", "points": 13, "rebounds": 4, "assists": 7 },
+    { "player_id": "p2", "name": "Breanna Stewart", "team": "NYL", "points": 9,  "rebounds": 11, "assists": 3 },
+    { "player_id": "p3", "name": "A'ja Wilson",     "team": "LVA", "points": 13, "rebounds": 14, "assists": 2 },
+    { "player_id": "p4", "name": "Jackie Young",    "team": "LVA", "points": 6,  "rebounds": 3,  "assists": 5 }
+  ]
+}

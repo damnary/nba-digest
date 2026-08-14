@@ -39,8 +39,8 @@ type Event struct {
 	OccurredAt time.Time
 }
 
-func NewEventID(league League, game GameID, kind EventKind, period, seq int) EventID {
-	return EventID(fmt.Sprintf("%s:%s:%s:p%d:%06d", league, game, kind, period, seq))
+func NewEventID(game GameID, kind EventKind, period, seq int) EventID {
+	return EventID(fmt.Sprintf("%s:%s:p%d:%06d", game, kind, period, seq))
 }
 
 func (e Event) Concerns(code TeamCode) bool {

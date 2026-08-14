@@ -40,6 +40,10 @@ func (g Game) IsActive() bool {
 	return g.Status == GameScheduled || g.Status == GameLive
 }
 
+func (g Game) IsOver() bool {
+	return g.Status == GameFinal || g.Status == GamePostponed
+}
+
 func (g Game) Margin() int {
 	d := g.Home.Score - g.Away.Score
 	if d < 0 {
