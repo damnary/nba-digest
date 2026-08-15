@@ -100,3 +100,58 @@ func (s *Store) EventsWithoutDeliveries(ctx context.Context, since time.Time) ([
 	}
 	return out, nil
 }
+
+func (s *Store) PendingRecipients(ctx context.Context, eventID core.EventID) ([]core.Subscriber, error) {
+	q := `SELECT ` + subscriberColumns("s.") + `
+	      FROM alert_deliveries d
+	      JOIN subscribers s ON s.id = d.subscriber_id
+	      WHERE d.event_id = $1 AND d.status = 'pending'
+	      ORDER BY s.id`
+
+	rows, err := s.pool.Query(ctx, q, string(eventID))
+	if err != nil {
+		return nil, fmt.Errorf("query pending recipients: %w", err)
+	}
+	defer rows.Close()
+
+	var out []core.Subscriber
+	for rows.Next() {
+		sub, err := scanSubscriber(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan recipient: %w", err)
+		}
+		out = append(out, sub)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recipients: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Store) EventsNeedingDelivery(ctx context.Context, since time.Time) ([]core.Event, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT e.id, e.game_id, e.league, e.kind, e.teams, e.period, e.clock,
+		        e.home_score, e.away_score, e.run_team, e.run_points, e.run_against, e.occurred_at
+		 FROM game_events e
+		 LEFT JOIN alert_deliveries d ON d.event_id = e.id
+		 WHERE e.created_at >= $1 AND (d.event_id IS NULL OR d.status = 'pending')
+		 GROUP BY e.id
+		 ORDER BY e.occurred_at`, since)
+	if err != nil {
+		return nil, fmt.Errorf("query events needing delivery: %w", err)
+	}
+	defer rows.Close()
+
+	var out []core.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events needing delivery: %w", err)
+	}
+	return out, nil
+}

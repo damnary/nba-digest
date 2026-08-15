@@ -110,3 +110,11 @@ func scanSubscriber(row pgx.Row) (core.Subscriber, error) {
 	}
 	return sub, nil
 }
+
+func (s *Store) DeleteSubscriber(ctx context.Context, id core.SubscriberID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM subscribers WHERE id = $1`, int64(id))
+	if err != nil {
+		return fmt.Errorf("delete subscriber: %w", err)
+	}
+	return nil
+}

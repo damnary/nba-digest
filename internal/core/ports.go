@@ -19,3 +19,9 @@ type ScoreProvider interface {
 	Plays(ctx context.Context, game Game, cursor string) (PlayFeed, error)
 	BoxScore(ctx context.Context, game Game) (GameStats, error)
 }
+
+type CommandHandler func(ctx context.Context, cmd Command) (Reply, error)
+
+type UpdateSource interface {
+	Run(ctx context.Context) error
+}
