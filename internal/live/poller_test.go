@@ -11,15 +11,17 @@ import (
 	"time"
 
 	"github.com/damnary/nba-digest/internal/core"
+	"github.com/damnary/nba-digest/internal/platform/retry"
 	"github.com/damnary/nba-digest/internal/provider/replay"
 )
 
 type fakeStore struct {
-	mu       sync.Mutex
-	games    map[core.GameID]core.Game
-	events   map[core.EventID]core.Event
-	stats    map[core.GameID]core.GameStats
-	failNext error
+	mu        sync.Mutex
+	games     map[core.GameID]core.Game
+	events    map[core.EventID]core.Event
+	stats     map[core.GameID]core.GameStats
+	failNext  error
+	failStats int
 }
 
 func newFakeStore() *fakeStore {
@@ -63,6 +65,10 @@ func (s *fakeStore) SaveEvents(_ context.Context, events []core.Event) ([]core.E
 func (s *fakeStore) SaveGameStats(_ context.Context, stats core.GameStats) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failStats > 0 {
+		s.failStats--
+		return errors.New("stats storage is having a moment")
+	}
 	s.stats[stats.GameID] = stats
 	return nil
 }
@@ -237,5 +243,49 @@ func TestStoreFailureDoesNotKillTheWatcher(t *testing.T) {
 	waitFor(t, "events despite the failure", func() bool {
 		_, events, _ := store.counts()
 		return events > 0
+	})
+}
+
+func TestScheduledGamesAreNotWatchedEarly(t *testing.T) {
+	store := newFakeStore()
+
+	provider, err := replay.New(os.DirFS("../provider/replay/testdata"), 1,
+		replay.WithStart(time.Now().Add(2*time.Hour)))
+	if err != nil {
+		t.Fatalf("replay provider: %v", err)
+	}
+
+	poller := NewPoller(provider, store, &fakePublisher{}, Config{
+		League:       core.LeagueWNBA,
+		ScanInterval: 5 * time.Millisecond,
+	}, WithLogger(quietLogger()))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() { _ = poller.Run(ctx) }()
+
+	waitFor(t, "the scheduled game to be stored", func() bool {
+		games, _, _ := store.counts()
+		return games == 1
+	})
+
+	if n := poller.Watching(); n != 0 {
+		t.Errorf("a game starting in two hours got %d watchers", n)
+	}
+}
+
+func TestFinishRetriesStatsAfterAFailure(t *testing.T) {
+	store := newFakeStore()
+	store.failStats = 2
+	poller := newReplayPoller(t, store, &fakePublisher{}, 4000)
+	WithStatsRetry(retry.Policy{Attempts: 4, Base: time.Millisecond, Max: 4 * time.Millisecond})(poller)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() { _ = poller.Run(ctx) }()
+
+	waitFor(t, "stats to survive two storage failures", func() bool {
+		_, _, stats := store.counts()
+		return stats == 1
 	})
 }

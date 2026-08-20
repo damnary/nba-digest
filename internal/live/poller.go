@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/damnary/nba-digest/internal/core"
+	"github.com/damnary/nba-digest/internal/platform/retry"
 )
+
+const watchLead = 5 * time.Minute
 
 type Store interface {
 	UpsertGames(ctx context.Context, games []core.Game) error
@@ -41,12 +44,13 @@ func (c Config) withDefaults() Config {
 }
 
 type Poller struct {
-	provider  core.ScoreProvider
-	store     Store
-	publisher Publisher
-	cfg       Config
-	log       *slog.Logger
-	now       func() time.Time
+	provider   core.ScoreProvider
+	store      Store
+	publisher  Publisher
+	cfg        Config
+	log        *slog.Logger
+	now        func() time.Time
+	statsRetry retry.Policy
 
 	sem chan struct{}
 	wg  sync.WaitGroup
@@ -59,14 +63,15 @@ func NewPoller(provider core.ScoreProvider, store Store, publisher Publisher, cf
 	cfg = cfg.withDefaults()
 
 	p := &Poller{
-		provider:  provider,
-		store:     store,
-		publisher: publisher,
-		cfg:       cfg,
-		log:       slog.Default(),
-		now:       time.Now,
-		sem:       make(chan struct{}, cfg.MaxInflight),
-		watchers:  make(map[core.GameID]chan core.Game),
+		provider:   provider,
+		store:      store,
+		publisher:  publisher,
+		cfg:        cfg,
+		log:        slog.Default(),
+		now:        time.Now,
+		statsRetry: retry.Policy{Attempts: 3, Base: 2 * time.Second, Max: 20 * time.Second},
+		sem:        make(chan struct{}, cfg.MaxInflight),
+		watchers:   make(map[core.GameID]chan core.Game),
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -82,6 +87,10 @@ func WithLogger(l *slog.Logger) PollerOption {
 
 func WithClock(now func() time.Time) PollerOption {
 	return func(p *Poller) { p.now = now }
+}
+
+func WithStatsRetry(policy retry.Policy) PollerOption {
+	return func(p *Poller) { p.statsRetry = policy }
 }
 
 func (p *Poller) Run(ctx context.Context) error {
@@ -158,6 +167,10 @@ func (p *Poller) track(ctx context.Context, game core.Game) {
 	updates, running := p.watchers[game.ID]
 	if !running {
 		if !game.IsActive() {
+			p.mu.Unlock()
+			return
+		}
+		if game.Status == core.GameScheduled && p.now().Add(watchLead).Before(game.StartsAt) {
 			p.mu.Unlock()
 			return
 		}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/damnary/nba-digest/internal/core"
+	"github.com/damnary/nba-digest/internal/platform/retry"
 )
 
 type watcher struct {
@@ -119,21 +120,23 @@ func (w *watcher) finish(ctx context.Context) error {
 		return nil
 	}
 
-	box, err := w.fetchBoxScore(ctx)
-	if err != nil {
-		return fmt.Errorf("box score: %w", err)
-	}
+	return retry.Do(ctx, w.poller.statsRetry, func(ctx context.Context) error {
+		box, err := w.fetchBoxScore(ctx)
+		if err != nil {
+			return fmt.Errorf("box score: %w", err)
+		}
 
-	stats := Aggregate(box, w.plays)
-	if err := w.poller.store.SaveGameStats(ctx, stats); err != nil {
-		return fmt.Errorf("save stats: %w", err)
-	}
+		stats := Aggregate(box, w.plays)
+		if err := w.poller.store.SaveGameStats(ctx, stats); err != nil {
+			return fmt.Errorf("save stats: %w", err)
+		}
 
-	w.log.Info("game finished",
-		"score", fmt.Sprintf("%d:%d", w.game.Home.Score, w.game.Away.Score),
-		"plays", len(w.plays),
-		"clutch_margin", stats.ClutchMargin)
-	return nil
+		w.log.Info("game finished",
+			"score", fmt.Sprintf("%d:%d", w.game.Home.Score, w.game.Away.Score),
+			"plays", len(w.plays),
+			"clutch_margin", stats.ClutchMargin)
+		return nil
+	})
 }
 
 func (w *watcher) fetchBoxScore(ctx context.Context) (core.GameStats, error) {

@@ -63,7 +63,11 @@ func run() error {
 	}
 
 	if err := syncTeams(ctx, provider, store, cfg.League); err != nil {
-		return fmt.Errorf("sync teams: %w", err)
+		stored, storeErr := store.Teams(ctx, cfg.League)
+		if storeErr != nil || len(stored) == 0 {
+			return fmt.Errorf("sync teams: %w", err)
+		}
+		log.Warn("team sync failed, using the stored roster", "err", err, "teams", len(stored))
 	}
 
 	bot := telegram.NewClient(cfg.TelegramToken)
