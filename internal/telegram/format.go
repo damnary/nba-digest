@@ -30,32 +30,33 @@ func render(reply core.Reply) (string, *keyboard) {
 func replyText(reply core.Reply) string {
 	switch reply.Kind {
 	case core.ReplyWelcome:
-		return "Привет! Я присылаю утренний дайджест матчей и уведомления по ходу игры.\n\n" +
+		return "<b>Дайджест матчей WNBA</b>\n\n" +
+			"Утром присылаю итоги вчерашних матчей, по ходу игры — уведомления о переломных моментах.\n\n" +
 			"Выбери команды, за которыми следишь:"
 
 	case core.ReplyTeams:
 		return selectionSummary(reply) + "\n\nНажми на команду, чтобы добавить или убрать её:"
 
 	case core.ReplyTeamAdded:
-		return fmt.Sprintf("Добавил %s.\n\n%s", reply.Team.Name, selectionSummary(reply))
+		return fmt.Sprintf("Добавил <b>%s</b>\n\n%s", esc(reply.Team.Name), selectionSummary(reply))
 
 	case core.ReplyTeamRemoved:
-		return fmt.Sprintf("Убрал %s.\n\n%s", reply.Team.Name, selectionSummary(reply))
+		return fmt.Sprintf("Убрал <b>%s</b>\n\n%s", esc(reply.Team.Name), selectionSummary(reply))
 
 	case core.ReplyAlerts:
 		if reply.Enabled {
-			return "Уведомления по ходу матча включены."
+			return "<b>Уведомления включены</b>\n\nБуду писать по ходу матчей твоих команд."
 		}
-		return "Уведомления по ходу матча выключены. Утренний дайджест продолжит приходить."
+		return "<b>Уведомления выключены</b>\n\nУтренний дайджест продолжит приходить."
 
 	case core.ReplyStopped:
-		return "Отписал от всего. Захочешь вернуться — просто напиши /start."
+		return "<b>Отписал от всего</b>\n\nЗахочешь вернуться — напиши /start"
 
 	case core.ReplyUnknownTeam:
-		return "Не знаю такую команду. Посмотри список через /teams."
+		return "Не знаю такую команду.\n\nПосмотри список через /teams"
 
 	default:
-		return "Что я умею:\n" +
+		return "<b>Что я умею</b>\n\n" +
 			"/teams — выбрать команды\n" +
 			"/alerts on | off — уведомления по ходу матча\n" +
 			"/stop — отписаться от всего"
@@ -70,9 +71,9 @@ func selectionSummary(reply core.Reply) string {
 
 	names := make([]string, len(selected))
 	for i, team := range selected {
-		names[i] = team.Name
+		names[i] = esc(team.Name)
 	}
-	return "Твои команды: " + strings.Join(names, ", ") + "."
+	return "<b>Твои команды</b>\n" + strings.Join(names, "\n")
 }
 
 func teamKeyboard(options []core.TeamOption) *keyboard {
@@ -82,7 +83,7 @@ func teamKeyboard(options []core.TeamOption) *keyboard {
 	for _, option := range options {
 		label := option.Team.Name
 		if option.Selected {
-			label = "✅ " + label
+			label = "✓ " + label
 		}
 		row = append(row, button{Text: label, Data: togglePrefix + string(option.Team.Code)})
 

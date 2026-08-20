@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -222,7 +223,7 @@ func TestWebhookAnswersATextCommand(t *testing.T) {
 		t.Fatalf("want a single row of two teams, got %d rows", len(rows))
 	}
 	first := rows[0].([]any)[0].(map[string]any)
-	if first["text"] != "✅ New York Liberty" {
+	if first["text"] != "✓ New York Liberty" {
 		t.Errorf("selected team should be ticked, got %q", first["text"])
 	}
 	if first["callback_data"] != "t:NYL" {
@@ -342,5 +343,80 @@ func TestRetryAfterIsHonoured(t *testing.T) {
 	}
 	if slept != 7*time.Second {
 		t.Errorf("slept %v, want the 7s the server asked for", slept)
+	}
+}
+
+func TestPollingSurvivesANetworkTimeout(t *testing.T) {
+	var updateCalls atomic.Int32
+	dispatched := make(chan int64, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isUpdates := strings.HasSuffix(r.URL.Path, "/getUpdates")
+		if isUpdates && updateCalls.Add(1) == 1 {
+			time.Sleep(300 * time.Millisecond)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if isUpdates {
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":7,"message":{"message_id":1,"text":"/start","chat":{"id":42}}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-token",
+		WithBaseURL(srv.URL),
+		WithHTTPClient(&http.Client{Timeout: 80 * time.Millisecond}))
+
+	poller := NewPoller(client, func(_ context.Context, cmd core.Command) (core.Reply, error) {
+		select {
+		case dispatched <- cmd.ChatID:
+		default:
+		}
+		return core.Reply{Kind: core.ReplyHelp}, nil
+	}, WithPollerLogger(quiet()))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- poller.Run(ctx) }()
+
+	select {
+	case chat := <-dispatched:
+		if chat != 42 {
+			t.Errorf("dispatched chat %d, want 42", chat)
+		}
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("polling stopped after a network timeout instead of retrying")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run returned %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after cancel")
+	}
+}
+
+func TestErrorsNeverLeakTheToken(t *testing.T) {
+	const token = "8715712861:AA-super-secret-value"
+
+	client := NewClient(token,
+		WithBaseURL("http://127.0.0.1:1"),
+		WithHTTPClient(&http.Client{Timeout: time.Second}))
+
+	err := client.SendMessage(t.Context(), 42, "hello", nil)
+	if err == nil {
+		t.Fatal("want a transport error")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("token leaked into the error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "REDACTED") {
+		t.Errorf("the url should be redacted, got: %v", err)
 	}
 }

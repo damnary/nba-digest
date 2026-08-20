@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 
 const (
 	defaultAPIBase  = "https://api.telegram.org"
+	parseMode       = "HTML"
 	globalRateLimit = 25
 	perChatRate     = 1
 	maxRetryAfter   = 30 * time.Second
@@ -88,6 +92,7 @@ func (e *apiError) Error() string {
 type sendMessageRequest struct {
 	ChatID      int64     `json:"chat_id"`
 	Text        string    `json:"text"`
+	ParseMode   string    `json:"parse_mode"`
 	ReplyMarkup *keyboard `json:"reply_markup,omitempty"`
 }
 
@@ -95,6 +100,7 @@ type editMessageRequest struct {
 	ChatID      int64     `json:"chat_id"`
 	MessageID   int64     `json:"message_id"`
 	Text        string    `json:"text"`
+	ParseMode   string    `json:"parse_mode"`
 	ReplyMarkup *keyboard `json:"reply_markup,omitempty"`
 }
 
@@ -102,14 +108,15 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, kb 
 	if err := c.waitForChat(ctx, chatID); err != nil {
 		return err
 	}
-	return c.call(ctx, "sendMessage", sendMessageRequest{ChatID: chatID, Text: text, ReplyMarkup: kb}, nil)
+	req := sendMessageRequest{ChatID: chatID, Text: text, ParseMode: parseMode, ReplyMarkup: kb}
+	return c.call(ctx, "sendMessage", req, nil)
 }
 
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, kb *keyboard) error {
 	if err := c.waitForChat(ctx, chatID); err != nil {
 		return err
 	}
-	req := editMessageRequest{ChatID: chatID, MessageID: messageID, Text: text, ReplyMarkup: kb}
+	req := editMessageRequest{ChatID: chatID, MessageID: messageID, Text: text, ParseMode: parseMode, ReplyMarkup: kb}
 	return c.call(ctx, "editMessageText", req, nil)
 }
 
@@ -173,16 +180,16 @@ func (c *Client) callOnce(ctx context.Context, method string, body, out any) (ti
 		return 0, fmt.Errorf("encode %s: %w", method, err)
 	}
 
-	url := fmt.Sprintf("%s/bot%s/%s", c.base, c.token, method)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	endpoint := fmt.Sprintf("%s/bot%s/%s", c.base, c.token, method)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return 0, fmt.Errorf("build %s: %w", method, err)
+		return 0, fmt.Errorf("build %s: %w", method, c.redact(err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("call %s: %w", method, err)
+		return 0, fmt.Errorf("call %s: %w", method, c.redact(err))
 	}
 	defer resp.Body.Close()
 
@@ -205,6 +212,18 @@ func (c *Client) callOnce(ctx context.Context, method string, body, out any) (ti
 		}
 	}
 	return 0, nil
+}
+
+func (c *Client) redact(err error) error {
+	if err == nil || c.token == "" {
+		return err
+	}
+
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		urlErr.URL = strings.ReplaceAll(urlErr.URL, c.token, "REDACTED")
+	}
+	return err
 }
 
 func (c *Client) waitForChat(ctx context.Context, chatID int64) error {
