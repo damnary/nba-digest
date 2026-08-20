@@ -314,3 +314,31 @@ func slicesClone(in []core.Play) []core.Play {
 	copy(out, in)
 	return out
 }
+
+func TestFinalEventIsStampedWhenObserved(t *testing.T) {
+	game := testGame(core.GameFinal)
+	game.StartsAt = baseTime
+	game.ObservedAt = baseTime.Add(2*time.Hour + 20*time.Minute)
+
+	events := Detect(game, nil)
+
+	var started, final core.Event
+	for _, e := range events {
+		switch e.Kind {
+		case core.EventGameStarted:
+			started = e
+		case core.EventGameFinal:
+			final = e
+		}
+	}
+
+	if !started.OccurredAt.Equal(game.StartsAt) {
+		t.Errorf("game_started should be stamped at tip-off, got %s", started.OccurredAt)
+	}
+	if !final.OccurredAt.Equal(game.ObservedAt) {
+		t.Errorf("game_final should be stamped when observed, got %s", final.OccurredAt)
+	}
+	if final.IsStale(game.ObservedAt) {
+		t.Error("a freshly observed final must not look stale")
+	}
+}

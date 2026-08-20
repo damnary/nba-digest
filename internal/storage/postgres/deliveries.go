@@ -39,10 +39,14 @@ func (s *Store) CreateDeliveries(ctx context.Context, eventID core.EventID, subs
 func (s *Store) MarkDelivery(ctx context.Context, id core.SubscriberID, eventID core.EventID, status core.DeliveryStatus) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE alert_deliveries
-		 SET status = $3, attempts = attempts + 1,
+		 SET status = CASE
+		         WHEN $3 = 'pending' AND attempts + 1 >= $4 THEN 'failed'
+		         ELSE $3
+		     END,
+		     attempts = attempts + 1,
 		     sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE sent_at END
 		 WHERE subscriber_id = $1 AND event_id = $2`,
-		int64(id), string(eventID), string(status),
+		int64(id), string(eventID), string(status), core.MaxDeliveryAttempts,
 	)
 	if err != nil {
 		return fmt.Errorf("mark delivery: %w", err)
@@ -105,10 +109,10 @@ func (s *Store) PendingRecipients(ctx context.Context, eventID core.EventID) ([]
 	q := `SELECT ` + subscriberColumns("s.") + `
 	      FROM alert_deliveries d
 	      JOIN subscribers s ON s.id = d.subscriber_id
-	      WHERE d.event_id = $1 AND d.status = 'pending'
+	      WHERE d.event_id = $1 AND d.status = 'pending' AND d.attempts < $2
 	      ORDER BY s.id`
 
-	rows, err := s.pool.Query(ctx, q, string(eventID))
+	rows, err := s.pool.Query(ctx, q, string(eventID), core.MaxDeliveryAttempts)
 	if err != nil {
 		return nil, fmt.Errorf("query pending recipients: %w", err)
 	}

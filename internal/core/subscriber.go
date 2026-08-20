@@ -28,6 +28,18 @@ func (d DailyTime) Matches(t time.Time) bool {
 	return t.Hour() == d.Hour && t.Minute() == d.Minute
 }
 
+const DigestCatchUp = 3 * time.Hour
+
+func (d DailyTime) Due(t time.Time, window time.Duration) bool {
+	target := time.Duration(d.Hour)*time.Hour + time.Duration(d.Minute)*time.Minute
+	current := time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute
+
+	if current < target {
+		return false
+	}
+	return current-target <= window
+}
+
 type Subscriber struct {
 	ID        SubscriberID
 	ChatID    int64

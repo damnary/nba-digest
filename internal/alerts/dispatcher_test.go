@@ -214,8 +214,8 @@ func TestSendFailureIsRecordedAndDoesNotStopTheRest(t *testing.T) {
 		t.Fatalf("both recipients should be marked, got %+v", store.marks)
 	}
 	for _, m := range store.marks {
-		if m.status != core.DeliveryFailed {
-			t.Errorf("status = %s, want failed", m.status)
+		if m.status != core.DeliveryPending {
+			t.Errorf("status = %s, want pending so the sweep can retry", m.status)
 		}
 	}
 }
@@ -263,5 +263,50 @@ func TestStoreFailureIsReported(t *testing.T) {
 
 	if err := d.Dispatch(t.Context(), testEvent()); err == nil {
 		t.Fatal("want an error when the store fails")
+	}
+}
+
+func TestFailedSendStaysRetryable(t *testing.T) {
+	store := newFakeStore(subscriber(1, 100, true))
+	sender := &fakeSender{fail: true}
+	d := newDispatcher(store, sender, &fakeConsumer{})
+	event := testEvent()
+
+	if err := d.Dispatch(t.Context(), event); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(store.marks) != 1 || store.marks[0].status != core.DeliveryPending {
+		t.Fatalf("a failed send must stay pending, got %+v", store.marks)
+	}
+
+	sender.fail = false
+	if err := d.Dispatch(t.Context(), event); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if len(sender.sent) != 1 || sender.sent[0] != 100 {
+		t.Errorf("the retry should have delivered the alert, got %v", sender.sent)
+	}
+}
+
+func TestSweepRetriesPendingDeliveries(t *testing.T) {
+	store := newFakeStore(subscriber(1, 100, true))
+	sender := &fakeSender{fail: true}
+	d := newDispatcher(store, sender, &fakeConsumer{})
+
+	store.catchUp = []core.Event{testEvent()}
+
+	if err := d.catchUp(t.Context()); err != nil {
+		t.Fatalf("first sweep: %v", err)
+	}
+	if len(sender.sent) != 0 {
+		t.Fatalf("telegram was down, nothing should have been delivered")
+	}
+
+	sender.fail = false
+	if err := d.catchUp(t.Context()); err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+	if len(sender.sent) != 1 || sender.sent[0] != 100 {
+		t.Errorf("the sweep should have delivered the alert, got %v", sender.sent)
 	}
 }

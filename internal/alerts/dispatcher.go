@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/damnary/nba-digest/internal/core"
@@ -26,11 +27,12 @@ type Consumer interface {
 }
 
 type Dispatcher struct {
-	store    Store
-	sender   Sender
-	consumer Consumer
-	log      *slog.Logger
-	now      func() time.Time
+	store      Store
+	sender     Sender
+	consumer   Consumer
+	log        *slog.Logger
+	now        func() time.Time
+	retryEvery time.Duration
 }
 
 type Option func(*Dispatcher)
@@ -43,13 +45,18 @@ func WithClock(now func() time.Time) Option {
 	return func(d *Dispatcher) { d.now = now }
 }
 
+func WithRetryInterval(every time.Duration) Option {
+	return func(d *Dispatcher) { d.retryEvery = every }
+}
+
 func New(store Store, sender Sender, consumer Consumer, opts ...Option) *Dispatcher {
 	d := &Dispatcher{
-		store:    store,
-		sender:   sender,
-		consumer: consumer,
-		log:      slog.Default(),
-		now:      time.Now,
+		store:      store,
+		sender:     sender,
+		consumer:   consumer,
+		log:        slog.Default(),
+		now:        time.Now,
+		retryEvery: time.Minute,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -61,7 +68,38 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	if err := d.catchUp(ctx); err != nil {
 		d.log.Error("catch-up failed", "err", err)
 	}
-	return d.consumer.Consume(ctx, d.Dispatch)
+
+	loopCtx, stopLoop := context.WithCancel(ctx)
+	defer stopLoop()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		d.retryLoop(loopCtx)
+	}()
+
+	err := d.consumer.Consume(ctx, d.Dispatch)
+	stopLoop()
+	wg.Wait()
+	return err
+}
+
+func (d *Dispatcher) retryLoop(ctx context.Context) {
+	ticker := time.NewTicker(d.retryEvery)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		if err := d.catchUp(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("retry sweep failed", "err", err)
+		}
+	}
 }
 
 func (d *Dispatcher) catchUp(ctx context.Context) error {
@@ -116,7 +154,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event core.Event) error {
 				return ctx.Err()
 			}
 			d.log.Warn("alert not delivered", "chat", sub.ChatID, "event", event.ID, "err", err)
-			d.mark(ctx, sub.ID, event.ID, core.DeliveryFailed)
+			d.mark(ctx, sub.ID, event.ID, core.DeliveryPending)
 			continue
 		}
 		d.mark(ctx, sub.ID, event.ID, core.DeliverySent)

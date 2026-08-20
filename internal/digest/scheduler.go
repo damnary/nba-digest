@@ -87,7 +87,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 
 	for _, sub := range subscribers {
 		local := sub.LocalTime(now)
-		if !sub.DigestAt.Matches(local) {
+		if !sub.DigestAt.Due(local, core.DigestCatchUp) {
 			continue
 		}
 

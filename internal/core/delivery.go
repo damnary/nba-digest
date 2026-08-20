@@ -11,7 +11,10 @@ const (
 	DeliveryFailed  DeliveryStatus = "failed"
 )
 
-const CatchUpWindow = 15 * time.Minute
+const (
+	CatchUpWindow       = 15 * time.Minute
+	MaxDeliveryAttempts = 5
+)
 
 type Delivery struct {
 	SubscriberID SubscriberID

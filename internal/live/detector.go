@@ -140,6 +140,11 @@ func eventFromPlay(game core.Game, p core.Play, kind core.EventKind) core.Event 
 }
 
 func lifecycleEvent(game core.Game, kind core.EventKind) core.Event {
+	occurredAt := game.StartsAt
+	if kind == core.EventGameFinal {
+		occurredAt = game.ObservedAt
+	}
+
 	return core.Event{
 		ID:         core.NewEventID(game.ID, kind, 0, 0),
 		GameID:     game.ID,
@@ -149,6 +154,6 @@ func lifecycleEvent(game core.Game, kind core.EventKind) core.Event {
 		Period:     game.Period,
 		HomeScore:  game.Home.Score,
 		AwayScore:  game.Away.Score,
-		OccurredAt: game.StartsAt,
+		OccurredAt: occurredAt,
 	}
 }

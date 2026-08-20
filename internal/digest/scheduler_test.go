@@ -244,3 +244,39 @@ func TestStoreFailureDoesNotMarkTheDay(t *testing.T) {
 		t.Error("a failed digest must stay unmarked so the next tick retries it")
 	}
 }
+
+func TestDigestSurvivesAMissedMinute(t *testing.T) {
+	loc := moscow(t)
+	store := newFakeStore()
+	store.subs = []core.Subscriber{{ID: 1, ChatID: 100, Timezone: loc, DigestAt: core.DailyTime{Hour: 8}}}
+	store.games = []core.Game{finalGame("wnba:1", "NYL", "LVA", 88, 81)}
+
+	sender := &fakeSender{}
+	s := newScheduler(store, sender)
+
+	// 06:20 UTC is 09:20 in Moscow: the 08:00 tick was missed, but we are still in the window.
+	if err := s.Tick(t.Context(), time.Date(2026, 8, 11, 6, 20, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("late tick: %v", err)
+	}
+	if len(sender.digests) != 1 {
+		t.Fatalf("a missed minute must not lose the digest, got %d", len(sender.digests))
+	}
+}
+
+func TestDigestIsNotSentHoursLate(t *testing.T) {
+	loc := moscow(t)
+	store := newFakeStore()
+	store.subs = []core.Subscriber{{ID: 1, ChatID: 100, Timezone: loc, DigestAt: core.DailyTime{Hour: 8}}}
+	store.games = []core.Game{finalGame("wnba:1", "NYL", "LVA", 88, 81)}
+
+	sender := &fakeSender{}
+	s := newScheduler(store, sender)
+
+	// 17:00 UTC is 20:00 in Moscow — twelve hours late, nobody needs it now.
+	if err := s.Tick(t.Context(), time.Date(2026, 8, 11, 17, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("very late tick: %v", err)
+	}
+	if len(sender.digests) != 0 {
+		t.Errorf("a twelve-hour-late digest should be skipped, got %d", len(sender.digests))
+	}
+}

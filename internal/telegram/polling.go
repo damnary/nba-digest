@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -52,10 +51,10 @@ func (p *Poller) Run(ctx context.Context) error {
 		}
 
 		updates, err := p.client.GetUpdates(ctx, p.offset, pollTimeout)
-		switch {
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return nil
-		case err != nil:
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			p.log.Warn("getUpdates failed", "err", err)
 			select {
 			case <-ctx.Done():

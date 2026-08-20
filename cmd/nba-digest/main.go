@@ -85,14 +85,14 @@ func run() error {
 
 	g, gctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error { return server.Run(gctx) })
-	g.Go(func() error { return updates.Run(gctx) })
-	g.Go(func() error { return scheduler.Run(gctx) })
-	g.Go(func() error { return dispatcher.Run(gctx) })
-	g.Go(func() error {
+	g.Go(supervise(gctx, "http server", server.Run))
+	g.Go(supervise(gctx, "telegram", updates.Run))
+	g.Go(supervise(gctx, "digest scheduler", scheduler.Run))
+	g.Go(supervise(gctx, "alerts dispatcher", dispatcher.Run))
+	g.Go(supervise(gctx, "live poller", func(ctx context.Context) error {
 		defer bus.Close()
-		return poller.Run(gctx)
-	})
+		return poller.Run(ctx)
+	}))
 
 	log.Info("nba-digest started",
 		"league", cfg.League,
@@ -104,6 +104,16 @@ func run() error {
 	}
 	log.Info("stopped cleanly")
 	return nil
+}
+
+func supervise(ctx context.Context, name string, run func(context.Context) error) func() error {
+	return func() error {
+		err := run(ctx)
+		if err == nil && ctx.Err() == nil {
+			return fmt.Errorf("%s stopped while the service was still running", name)
+		}
+		return err
+	}
 }
 
 func newProvider(cfg config.Config) (core.ScoreProvider, error) {
