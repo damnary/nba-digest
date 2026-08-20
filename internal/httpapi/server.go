@@ -63,8 +63,6 @@ func New(cfg Config, opts ...Option) *Server {
 	return s
 }
 
-func (s *Server) Addr() string { return s.http.Addr }
-
 func (s *Server) Handler() http.Handler { return s.http.Handler }
 
 func (s *Server) Run(ctx context.Context) error {

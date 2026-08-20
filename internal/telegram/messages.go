@@ -29,7 +29,48 @@ func (c *Client) SendEvent(ctx context.Context, chatID int64, event core.Event) 
 }
 
 func (c *Client) SendDigest(ctx context.Context, chatID int64, digest core.Digest) error {
-	return c.SendMessage(ctx, chatID, FormatDigest(digest), nil)
+	for _, part := range splitMessage(FormatDigest(digest)) {
+		if err := c.SendMessage(ctx, chatID, part, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+const maxMessageBytes = 4000
+
+func splitMessage(text string) []string {
+	if len(text) <= maxMessageBytes {
+		return []string{text}
+	}
+
+	var (
+		parts []string
+		b     strings.Builder
+	)
+	flush := func() {
+		if b.Len() > 0 {
+			parts = append(parts, b.String())
+			b.Reset()
+		}
+	}
+
+	for _, paragraph := range strings.Split(text, "\n\n") {
+		if b.Len() > 0 && b.Len()+2+len(paragraph) > maxMessageBytes {
+			flush()
+		}
+		for len(paragraph) > maxMessageBytes {
+			flush()
+			parts = append(parts, paragraph[:maxMessageBytes])
+			paragraph = paragraph[maxMessageBytes:]
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(paragraph)
+	}
+	flush()
+	return parts
 }
 
 func FormatEvent(event core.Event) string {

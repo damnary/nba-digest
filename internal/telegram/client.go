@@ -21,6 +21,7 @@ const (
 	globalRateLimit = 25
 	perChatRate     = 1
 	maxRetryAfter   = 30 * time.Second
+	maxChatLimiters = 1024
 )
 
 type Client struct {
@@ -230,6 +231,9 @@ func (c *Client) waitForChat(ctx context.Context, chatID int64) error {
 	c.mu.Lock()
 	limiter, ok := c.perChat[chatID]
 	if !ok {
+		if len(c.perChat) >= maxChatLimiters {
+			c.perChat = make(map[int64]*rate.Limiter, maxChatLimiters)
+		}
 		limiter = rate.NewLimiter(perChatRate, 1)
 		c.perChat[chatID] = limiter
 	}

@@ -87,11 +87,12 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 
 	for _, sub := range subscribers {
 		local := sub.LocalTime(now)
-		if !sub.DigestAt.Due(local, core.DigestCatchUp) {
+		occurrence := sub.DigestAt.LastOccurrence(local)
+		if local.Sub(occurrence) > core.DigestCatchUp {
 			continue
 		}
 
-		day := core.DayOf(local).Prev()
+		day := core.DayOf(occurrence).Prev()
 		if _, ok := processed[day]; !ok {
 			done, err := s.store.ProcessedDigests(ctx, day)
 			if err != nil {

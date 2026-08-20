@@ -24,20 +24,14 @@ func (d DailyTime) String() string {
 	return fmt.Sprintf("%02d:%02d", d.Hour, d.Minute)
 }
 
-func (d DailyTime) Matches(t time.Time) bool {
-	return t.Hour() == d.Hour && t.Minute() == d.Minute
-}
-
 const DigestCatchUp = 3 * time.Hour
 
-func (d DailyTime) Due(t time.Time, window time.Duration) bool {
-	target := time.Duration(d.Hour)*time.Hour + time.Duration(d.Minute)*time.Minute
-	current := time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute
-
-	if current < target {
-		return false
+func (d DailyTime) LastOccurrence(t time.Time) time.Time {
+	occurrence := time.Date(t.Year(), t.Month(), t.Day(), d.Hour, d.Minute, 0, 0, t.Location())
+	if occurrence.After(t) {
+		occurrence = occurrence.AddDate(0, 0, -1)
 	}
-	return current-target <= window
+	return occurrence
 }
 
 type Subscriber struct {

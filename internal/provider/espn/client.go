@@ -158,6 +158,7 @@ func (c *Client) getJSON(ctx context.Context, url string, out any) error {
 		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "nba-digest/1.0")
 
 	resp, err := c.http.Do(req)
 	if err != nil {

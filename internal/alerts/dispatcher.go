@@ -33,6 +33,7 @@ type Dispatcher struct {
 	log        *slog.Logger
 	now        func() time.Time
 	retryEvery time.Duration
+	drainGrace time.Duration
 }
 
 type Option func(*Dispatcher)
@@ -49,6 +50,10 @@ func WithRetryInterval(every time.Duration) Option {
 	return func(d *Dispatcher) { d.retryEvery = every }
 }
 
+func WithDrainGrace(grace time.Duration) Option {
+	return func(d *Dispatcher) { d.drainGrace = grace }
+}
+
 func New(store Store, sender Sender, consumer Consumer, opts ...Option) *Dispatcher {
 	d := &Dispatcher{
 		store:      store,
@@ -57,6 +62,7 @@ func New(store Store, sender Sender, consumer Consumer, opts ...Option) *Dispatc
 		log:        slog.Default(),
 		now:        time.Now,
 		retryEvery: time.Minute,
+		drainGrace: 30 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -79,7 +85,20 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		d.retryLoop(loopCtx)
 	}()
 
-	err := d.consumer.Consume(ctx, d.Dispatch)
+	drainCtx, cancelDrain := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelDrain()
+	stopWatch := context.AfterFunc(ctx, func() {
+		time.AfterFunc(d.drainGrace, cancelDrain)
+	})
+	defer stopWatch()
+
+	err := d.consumer.Consume(drainCtx, func(ctx context.Context, event core.Event) error {
+		if dispatchErr := d.Dispatch(ctx, event); dispatchErr != nil {
+			d.log.Error("dispatch failed", "event", event.ID, "err", dispatchErr)
+			return dispatchErr
+		}
+		return nil
+	})
 	stopLoop()
 	wg.Wait()
 	return err
@@ -144,6 +163,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event core.Event) error {
 
 	stale := event.IsStale(d.now())
 	for _, sub := range recipients {
+		if !sub.AlertsOn {
+			d.mark(ctx, sub.ID, event.ID, core.DeliverySkipped)
+			continue
+		}
 		if stale {
 			d.mark(ctx, sub.ID, event.ID, core.DeliverySkipped)
 			continue

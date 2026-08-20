@@ -43,26 +43,3 @@ func (g Game) IsActive() bool {
 func (g Game) IsOver() bool {
 	return g.Status == GameFinal || g.Status == GamePostponed
 }
-
-func (g Game) Margin() int {
-	d := g.Home.Score - g.Away.Score
-	if d < 0 {
-		return -d
-	}
-	return d
-}
-
-func (g Game) Leader() (TeamScore, bool) {
-	switch {
-	case g.Home.Score > g.Away.Score:
-		return g.Home, true
-	case g.Away.Score > g.Home.Score:
-		return g.Away, true
-	default:
-		return TeamScore{}, false
-	}
-}
-
-func (g Game) Involves(code TeamCode) bool {
-	return g.Home.Team.Code == code || g.Away.Team.Code == code
-}

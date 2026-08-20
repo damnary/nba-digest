@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/damnary/nba-digest/internal/core"
+	"github.com/damnary/nba-digest/internal/eventbus/inmem"
 )
 
 var now = time.Date(2026, 8, 11, 3, 30, 0, 0, time.UTC)
@@ -70,7 +71,15 @@ func (f *fakeStore) CreateDeliveries(_ context.Context, id core.EventID, subs []
 }
 
 func (f *fakeStore) PendingRecipients(_ context.Context, id core.EventID) ([]core.Subscriber, error) {
-	return f.pending[id], nil
+	out := make([]core.Subscriber, 0, len(f.pending[id]))
+	for _, pending := range f.pending[id] {
+		for _, current := range f.subs {
+			if current.ID == pending.ID {
+				out = append(out, current)
+			}
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) MarkDelivery(_ context.Context, id core.SubscriberID, event core.EventID, status core.DeliveryStatus) error {
@@ -100,7 +109,10 @@ type fakeSender struct {
 	fail bool
 }
 
-func (s *fakeSender) SendEvent(_ context.Context, chatID int64, _ core.Event) error {
+func (s *fakeSender) SendEvent(ctx context.Context, chatID int64, _ core.Event) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.fail {
 		return errors.New("telegram said no")
 	}
@@ -308,5 +320,66 @@ func TestSweepRetriesPendingDeliveries(t *testing.T) {
 	}
 	if len(sender.sent) != 1 || sender.sent[0] != 100 {
 		t.Errorf("the sweep should have delivered the alert, got %v", sender.sent)
+	}
+}
+
+func TestAlertsDisabledAfterCreationAreSkippedAtSendTime(t *testing.T) {
+	store := newFakeStore(subscriber(1, 100, true))
+	sender := &fakeSender{fail: true}
+	d := newDispatcher(store, sender, &fakeConsumer{})
+	event := testEvent()
+
+	if err := d.Dispatch(t.Context(), event); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	store.subs[0].AlertsOn = false
+	sender.fail = false
+	if err := d.Dispatch(t.Context(), event); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+
+	if len(sender.sent) != 0 {
+		t.Errorf("alerts were turned off, nothing should be sent: %v", sender.sent)
+	}
+	last := store.marks[len(store.marks)-1]
+	if last.status != core.DeliverySkipped {
+		t.Errorf("final status = %s, want skipped", last.status)
+	}
+}
+
+func TestShutdownDrainsTheBuffer(t *testing.T) {
+	store := newFakeStore(subscriber(1, 100, true))
+	sender := &fakeSender{}
+
+	bus := inmem.New(8)
+	first := testEvent()
+	second := testEvent()
+	second.ID = "wnba:1:run:p3:000200"
+	if err := bus.Publish(t.Context(), first); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := bus.Publish(t.Context(), second); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	bus.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	d := New(store, sender, bus,
+		WithLogger(quiet()),
+		WithClock(func() time.Time { return now }),
+		WithDrainGrace(5*time.Second))
+
+	if err := d.Run(ctx); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if len(sender.sent) != 2 {
+		t.Errorf("the buffer must be drained after shutdown, sent %d of 2", len(sender.sent))
+	}
+	if bus.Dropped() != 0 {
+		t.Errorf("%d events were dropped instead of drained", bus.Dropped())
 	}
 }

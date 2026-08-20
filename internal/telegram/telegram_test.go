@@ -420,3 +420,34 @@ func TestErrorsNeverLeakTheToken(t *testing.T) {
 		t.Errorf("the url should be redacted, got: %v", err)
 	}
 }
+
+func TestSplitMessageKeepsParagraphsIntact(t *testing.T) {
+	short := "короткое сообщение"
+	if got := splitMessage(short); len(got) != 1 || got[0] != short {
+		t.Fatalf("short text must stay whole, got %d parts", len(got))
+	}
+
+	paragraph := "<b>Матч</b>\n" + strings.Repeat("строка со счётом и фамилиями игроков\n", 20)
+	paragraph = strings.TrimRight(paragraph, "\n")
+	var paragraphs []string
+	for range 12 {
+		paragraphs = append(paragraphs, paragraph)
+	}
+	long := strings.Join(paragraphs, "\n\n")
+
+	parts := splitMessage(long)
+	if len(parts) < 2 {
+		t.Fatalf("a %d-byte digest must be split, got %d part(s)", len(long), len(parts))
+	}
+	for i, part := range parts {
+		if len(part) > maxMessageBytes {
+			t.Errorf("part %d is %d bytes, over the limit", i, len(part))
+		}
+		if strings.Count(part, "<b>") != strings.Count(part, "</b>") {
+			t.Errorf("part %d has unbalanced tags", i)
+		}
+	}
+	if strings.Join(parts, "\n\n") != long {
+		t.Error("splitting lost content")
+	}
+}

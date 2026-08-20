@@ -37,6 +37,12 @@ services:
       DIGEST_AT: ${DIGEST_AT:-08:00}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Europe/Moscow}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "/nba-digest", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     mem_limit: 192m
     stop_grace_period: 35s
     restart: unless-stopped

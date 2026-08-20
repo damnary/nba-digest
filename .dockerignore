@@ -1,8 +1,4 @@
-.git
-.idea
-.claude
+.*
 bin
 deploy
-.env
-.env.*
 *.md

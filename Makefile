@@ -16,5 +16,5 @@ test:
 	go test ./... -race
 
 lint:
-	gofmt -l .
+	test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
 	go vet ./...

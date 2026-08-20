@@ -108,7 +108,7 @@ func TestCreateDeliveriesIsIdempotent(t *testing.T) {
 		t.Errorf("restart duplicated %d deliveries", created)
 	}
 
-	pending, err := store.PendingDeliveries(ctx, 10)
+	pending, err := store.PendingRecipients(ctx, ev.ID)
 	if err != nil {
 		t.Fatalf("pending: %v", err)
 	}
@@ -120,23 +120,24 @@ func TestCreateDeliveriesIsIdempotent(t *testing.T) {
 		t.Fatalf("mark: %v", err)
 	}
 
-	pending, err = store.PendingDeliveries(ctx, 10)
+	pending, err = store.PendingRecipients(ctx, ev.ID)
 	if err != nil {
 		t.Fatalf("pending after mark: %v", err)
 	}
-	if len(pending) != 1 || pending[0].SubscriberID != second.ID {
+	if len(pending) != 1 || pending[0].ID != second.ID {
 		t.Errorf("unexpected pending set: %+v", pending)
 	}
 }
 
-func TestEventsWithoutDeliveries(t *testing.T) {
+func TestEventsNeedingDelivery(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 	seedGame(t, store, "wnba:1")
 
-	delivered := testEvent("wnba:1", 142)
-	orphan := testEvent("wnba:1", 175)
-	if _, err := store.SaveEvents(ctx, []core.Event{delivered, orphan}); err != nil {
+	sent := testEvent("wnba:1", 142)
+	stuck := testEvent("wnba:1", 175)
+	orphan := testEvent("wnba:1", 201)
+	if _, err := store.SaveEvents(ctx, []core.Event{sent, stuck, orphan}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -144,19 +145,28 @@ func TestEventsWithoutDeliveries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscriber: %v", err)
 	}
-	if _, err := store.CreateDeliveries(ctx, delivered.ID, []core.SubscriberID{sub.ID}); err != nil {
-		t.Fatalf("deliveries: %v", err)
+	for _, ev := range []core.Event{sent, stuck} {
+		if _, err := store.CreateDeliveries(ctx, ev.ID, []core.SubscriberID{sub.ID}); err != nil {
+			t.Fatalf("deliveries: %v", err)
+		}
+	}
+	if err := store.MarkDelivery(ctx, sub.ID, sent.ID, core.DeliverySent); err != nil {
+		t.Fatalf("mark: %v", err)
 	}
 
-	got, err := store.EventsWithoutDeliveries(ctx, time.Now().Add(-time.Hour))
+	got, err := store.EventsNeedingDelivery(ctx, time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != orphan.ID {
-		t.Fatalf("want only the orphan event, got %+v", got)
+	ids := make(map[core.EventID]bool, len(got))
+	for _, e := range got {
+		ids[e.ID] = true
+	}
+	if len(got) != 2 || !ids[stuck.ID] || !ids[orphan.ID] {
+		t.Fatalf("want the stuck and the orphan events, got %+v", ids)
 	}
 
-	none, err := store.EventsWithoutDeliveries(ctx, time.Now().Add(time.Hour))
+	none, err := store.EventsNeedingDelivery(ctx, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("future window: %v", err)
 	}
