@@ -162,7 +162,7 @@ func TestReplayFeedsTheDetector(t *testing.T) {
 		if e.Kind != core.EventRun {
 			continue
 		}
-		if e.Run.Team != "NYL" || e.Run.Points != 12 || e.Run.Against != 2 {
+		if e.Run.Team != "NY" || e.Run.Points != 12 || e.Run.Against != 2 {
 			t.Errorf("unexpected run: %+v", e.Run)
 		}
 	}
@@ -202,7 +202,7 @@ func TestReplayFeedsTheAggregator(t *testing.T) {
 		t.Errorf("top rebounder = %+v", rebounder)
 	}
 
-	nyl := stats.ByTeam("NYL").TopScorers(2)
+	nyl := stats.ByTeam("NY").TopScorers(2)
 	if len(nyl) != 2 || nyl[0].Player.Name != "Sabrina Ionescu" {
 		t.Errorf("NYL top scorers = %+v", nyl)
 	}

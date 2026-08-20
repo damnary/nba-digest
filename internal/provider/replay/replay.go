@@ -146,6 +146,10 @@ func (p *Provider) elapsed() time.Duration {
 	return time.Duration(float64(p.now().Sub(p.started)) * p.speed)
 }
 
+func (p *Provider) wallTime(offsetSeconds int) time.Time {
+	return p.started.Add(time.Duration(float64(offsetSeconds) * float64(time.Second) / p.speed))
+}
+
 func (p *Provider) fixtureOf(id core.GameID) (fixture, bool) {
 	for _, f := range p.fixtures {
 		if core.GameID(f.GameID) == id {
@@ -175,7 +179,7 @@ func (p *Provider) visiblePlays(f fixture) []core.Play {
 			Player:     core.Player{ID: core.PlayerID(pl.PlayerID), Name: pl.PlayerName, Team: core.TeamCode(pl.Team)},
 			HomeScore:  pl.HomeScore,
 			AwayScore:  pl.AwayScore,
-			OccurredAt: f.StartsAt.Add(time.Duration(pl.OffsetSeconds) * time.Second),
+			OccurredAt: p.wallTime(pl.OffsetSeconds),
 		})
 	}
 	return out
@@ -186,7 +190,7 @@ func (p *Provider) gameState(f fixture) core.Game {
 	game := core.Game{
 		ID:       core.GameID(f.GameID),
 		League:   league,
-		StartsAt: f.StartsAt,
+		StartsAt: p.started,
 		Status:   core.GameScheduled,
 		Home:     core.TeamScore{Team: core.Team{League: league, Code: core.TeamCode(f.Home.Code), Name: f.Home.Name}},
 		Away:     core.TeamScore{Team: core.Team{League: league, Code: core.TeamCode(f.Away.Code), Name: f.Away.Name}},
