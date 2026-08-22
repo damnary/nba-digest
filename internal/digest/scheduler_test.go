@@ -66,7 +66,7 @@ func (f *fakeStore) MarkDigestProcessed(_ context.Context, id core.SubscriberID,
 	return true, nil
 }
 
-func (f *fakeStore) GamesByDay(context.Context, core.League, core.Day, *time.Location) ([]core.Game, error) {
+func (f *fakeStore) GamesWithin(context.Context, core.League, time.Time, time.Time) ([]core.Game, error) {
 	if f.failGames {
 		return nil, errors.New("database is down")
 	}
@@ -297,5 +297,30 @@ func TestDigestWindowCrossesMidnight(t *testing.T) {
 	want := core.Day{Year: 2026, Month: time.August, Day: 10}
 	if got := sender.digests[0].Day; got != want {
 		t.Errorf("digest day = %s, want %s (the day before the 23:00 slot)", got, want)
+	}
+}
+
+func TestOvernightGamesArriveTheSameMorning(t *testing.T) {
+	loc := moscow(t)
+	store := newFakeStore()
+	store.subs = []core.Subscriber{{ID: 1, ChatID: 100, Timezone: loc, DigestAt: core.DailyTime{Hour: 8}}}
+
+	night := finalGame("wnba:1", "DAL", "IND", 91, 85)
+	night.StartsAt = time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
+	store.games = []core.Game{night}
+
+	sender := &fakeSender{}
+	s := newScheduler(store, sender)
+
+	if err := s.Tick(t.Context(), time.Date(2026, 8, 21, 5, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(sender.digests) != 1 {
+		t.Fatalf("tonight games must be delivered this morning, got %d digests", len(sender.digests))
+	}
+
+	want := core.Day{Year: 2026, Month: time.August, Day: 20}
+	if got := sender.digests[0].Day; got != want {
+		t.Errorf("digest labelled %s, want the US game date %s", got, want)
 	}
 }

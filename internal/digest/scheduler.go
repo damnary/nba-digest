@@ -14,7 +14,7 @@ type Store interface {
 	SubscriptionsOf(ctx context.Context, id core.SubscriberID) ([]core.Subscription, error)
 	ProcessedDigests(ctx context.Context, day core.Day) (map[core.SubscriberID]bool, error)
 	MarkDigestProcessed(ctx context.Context, id core.SubscriberID, day core.Day, sent bool) (bool, error)
-	GamesByDay(ctx context.Context, league core.League, day core.Day, loc *time.Location) ([]core.Game, error)
+	GamesWithin(ctx context.Context, league core.League, from, to time.Time) ([]core.Game, error)
 	GameStats(ctx context.Context, ids []core.GameID) (map[core.GameID]core.GameStats, error)
 }
 
@@ -104,7 +104,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 			continue
 		}
 
-		if err := s.deliver(ctx, sub, day); err != nil {
+		if err := s.deliver(ctx, sub, occurrence, day); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -114,13 +114,13 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func (s *Scheduler) deliver(ctx context.Context, sub core.Subscriber, day core.Day) error {
+func (s *Scheduler) deliver(ctx context.Context, sub core.Subscriber, occurrence time.Time, day core.Day) error {
 	subscriptions, err := s.store.SubscriptionsOf(ctx, sub.ID)
 	if err != nil {
 		return fmt.Errorf("subscriptions: %w", err)
 	}
 
-	games, err := s.store.GamesByDay(ctx, s.league, day, sub.Timezone)
+	games, err := s.store.GamesWithin(ctx, s.league, occurrence.Add(-24*time.Hour), occurrence)
 	if err != nil {
 		return fmt.Errorf("games: %w", err)
 	}

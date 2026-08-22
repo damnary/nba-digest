@@ -38,9 +38,9 @@ func TestUpsertGamesUpdatesScore(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 
-	games, err := store.GamesByDay(ctx, core.LeagueWNBA, core.DayOf(start), time.UTC)
+	games, err := store.GamesWithin(ctx, core.LeagueWNBA, start.Add(-time.Hour), start.Add(time.Hour))
 	if err != nil {
-		t.Fatalf("by day: %v", err)
+		t.Fatalf("within: %v", err)
 	}
 	if len(games) != 1 {
 		t.Fatalf("want 1 game, got %d", len(games))
@@ -109,7 +109,7 @@ func TestActiveGamesExcludesFinalAndPostponed(t *testing.T) {
 	}
 }
 
-func TestGamesByDayRespectsTimezone(t *testing.T) {
+func TestGamesWithinCoversTheOvernightWindow(t *testing.T) {
 	store := newTestStore(t)
 	ctx := t.Context()
 	seedTeams(t, store)
@@ -119,24 +119,25 @@ func TestGamesByDayRespectsTimezone(t *testing.T) {
 		t.Fatalf("load location: %v", err)
 	}
 
-	tipoff := time.Date(2026, 7, 27, 22, 30, 0, 0, time.UTC)
+	tipoff := time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)
 	if err := store.UpsertGames(ctx, []core.Game{testGame("wnba:1", core.GameFinal, tipoff, 88, 81)}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	utcDay, err := store.GamesByDay(ctx, core.LeagueWNBA, core.Day{Year: 2026, Month: time.July, Day: 27}, time.UTC)
+	digestAt := time.Date(2026, 8, 21, 8, 0, 0, 0, moscow)
+	games, err := store.GamesWithin(ctx, core.LeagueWNBA, digestAt.Add(-24*time.Hour), digestAt)
 	if err != nil {
-		t.Fatalf("utc day: %v", err)
+		t.Fatalf("within: %v", err)
 	}
-	if len(utcDay) != 1 {
-		t.Errorf("want the game on 27 July UTC, got %d", len(utcDay))
+	if len(games) != 1 {
+		t.Errorf("a game from tonight must land in this morning digest window, got %d", len(games))
 	}
 
-	moscowDay, err := store.GamesByDay(ctx, core.LeagueWNBA, core.Day{Year: 2026, Month: time.July, Day: 28}, moscow)
+	before, err := store.GamesWithin(ctx, core.LeagueWNBA, digestAt.Add(-48*time.Hour), digestAt.Add(-24*time.Hour))
 	if err != nil {
-		t.Fatalf("moscow day: %v", err)
+		t.Fatalf("previous window: %v", err)
 	}
-	if len(moscowDay) != 1 {
-		t.Errorf("want the game on 28 July Moscow time, got %d", len(moscowDay))
+	if len(before) != 0 {
+		t.Errorf("the previous window must not contain tonight, got %d", len(before))
 	}
 }

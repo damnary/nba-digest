@@ -54,9 +54,7 @@ func (s *Store) ActiveGames(ctx context.Context, league core.League) ([]core.Gam
 	return s.queryGames(ctx, q, string(league))
 }
 
-func (s *Store) GamesByDay(ctx context.Context, league core.League, day core.Day, loc *time.Location) ([]core.Game, error) {
-	from, to := day.Bounds(loc)
-
+func (s *Store) GamesWithin(ctx context.Context, league core.League, from, to time.Time) ([]core.Game, error) {
 	q := `SELECT ` + gameColumns + ` ` + gameJoins + `
 	      WHERE g.league = $1 AND g.starts_at >= $2 AND g.starts_at < $3
 	      ORDER BY g.starts_at`

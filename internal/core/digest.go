@@ -24,14 +24,6 @@ func (d Day) Prev() Day {
 	return DayOf(time.Date(d.Year, d.Month, d.Day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1))
 }
 
-func (d Day) Bounds(loc *time.Location) (time.Time, time.Time) {
-	if loc == nil {
-		loc = time.UTC
-	}
-	start := time.Date(d.Year, d.Month, d.Day, 0, 0, 0, 0, loc)
-	return start.UTC(), start.AddDate(0, 0, 1).UTC()
-}
-
 type DigestGame struct {
 	Game     Game
 	Stats    GameStats
