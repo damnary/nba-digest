@@ -123,3 +123,26 @@ func TestDigestRunsAreClaimedOnce(t *testing.T) {
 		t.Errorf("unexpected processed map: %+v", processed)
 	}
 }
+
+func TestEmptyDigestCountsAsProcessed(t *testing.T) {
+	store := newTestStore(t)
+	ctx := t.Context()
+
+	sub, err := store.EnsureSubscriber(ctx, 1)
+	if err != nil {
+		t.Fatalf("subscriber: %v", err)
+	}
+	day := core.Day{Year: 2026, Month: time.September, Day: 3}
+
+	if _, err := store.MarkDigestProcessed(ctx, sub.ID, day, false); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+
+	processed, err := store.ProcessedDigests(ctx, day)
+	if err != nil {
+		t.Fatalf("processed: %v", err)
+	}
+	if !processed[sub.ID] {
+		t.Error("a day with nothing to report is still processed and must not be rebuilt every minute")
+	}
+}

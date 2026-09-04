@@ -22,7 +22,7 @@ func (s *Store) MarkDigestProcessed(ctx context.Context, id core.SubscriberID, d
 
 func (s *Store) ProcessedDigests(ctx context.Context, day core.Day) (map[core.SubscriberID]bool, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT subscriber_id, sent FROM digest_runs WHERE day = $1`, dayToDate(day))
+		`SELECT subscriber_id FROM digest_runs WHERE day = $1`, dayToDate(day))
 	if err != nil {
 		return nil, fmt.Errorf("query digest runs: %w", err)
 	}
@@ -30,14 +30,11 @@ func (s *Store) ProcessedDigests(ctx context.Context, day core.Day) (map[core.Su
 
 	out := make(map[core.SubscriberID]bool)
 	for rows.Next() {
-		var (
-			id   core.SubscriberID
-			sent bool
-		)
-		if err := rows.Scan(&id, &sent); err != nil {
+		var id core.SubscriberID
+		if err := rows.Scan(&id); err != nil {
 			return nil, fmt.Errorf("scan digest run: %w", err)
 		}
-		out[id] = sent
+		out[id] = true
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate digest runs: %w", err)
