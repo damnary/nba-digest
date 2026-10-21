@@ -46,7 +46,7 @@ func Load() (Config, error) {
 
 	var problems []string
 
-	league, err := core.ParseLeague(valueOr("LEAGUE", string(core.LeagueWNBA)))
+	league, err := core.ParseLeague(valueOr("LEAGUE", string(core.LeagueNBA)))
 	if err != nil {
 		problems = append(problems, err.Error())
 	}

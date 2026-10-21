@@ -229,6 +229,25 @@ func TestBuildSplitsFeaturedAndRest(t *testing.T) {
 	}
 }
 
+func TestAnOldSubscriptionDoesNotFeatureAnotherLeague(t *testing.T) {
+	sub := core.Subscriber{ID: 1}
+	subscriptions := []core.Subscription{{SubscriberID: 1, League: core.LeagueWNBA, Team: "ATL"}}
+
+	game := core.Game{
+		ID:     "nba:1",
+		League: core.LeagueNBA,
+		Status: core.GameFinal,
+		Home:   core.TeamScore{Team: core.Team{League: core.LeagueNBA, Code: "ATL", Name: "Atlanta Hawks"}, Score: 110},
+		Away:   core.TeamScore{Team: core.Team{League: core.LeagueNBA, Code: "BOS", Name: "Boston Celtics"}, Score: 104},
+	}
+
+	built := Build(sub, subscriptions, []core.Game{game}, nil, core.Day{Year: 2026, Month: time.October, Day: 21})
+
+	if len(built.FeaturedGames()) != 0 {
+		t.Error("ATL in the WNBA is the Dream, not the Hawks: team codes repeat across leagues")
+	}
+}
+
 func TestStoreFailureDoesNotMarkTheDay(t *testing.T) {
 	loc := moscow(t)
 	store := newFakeStore()

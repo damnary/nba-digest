@@ -30,7 +30,7 @@ func render(reply core.Reply) (string, *keyboard) {
 func replyText(reply core.Reply) string {
 	switch reply.Kind {
 	case core.ReplyWelcome:
-		return "<b>Дайджест матчей WNBA</b>\n\n" +
+		return fmt.Sprintf("<b>Дайджест матчей %s</b>\n\n", reply.League.Title()) +
 			"Утром присылаю итоги вчерашних матчей, по ходу игры — уведомления о переломных моментах.\n\n" +
 			"Выбери команды, за которыми следишь:"
 

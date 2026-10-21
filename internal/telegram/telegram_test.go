@@ -421,6 +421,15 @@ func TestErrorsNeverLeakTheToken(t *testing.T) {
 	}
 }
 
+func TestWelcomeNamesTheLeague(t *testing.T) {
+	for _, league := range []core.League{core.LeagueNBA, core.LeagueWNBA} {
+		text := replyText(core.Reply{Kind: core.ReplyWelcome, League: league})
+		if !strings.Contains(text, league.Title()) {
+			t.Errorf("welcome for %s does not name the league: %q", league, text)
+		}
+	}
+}
+
 func TestSplitMessageKeepsParagraphsIntact(t *testing.T) {
 	short := "короткое сообщение"
 	if got := splitMessage(short); len(got) != 1 || got[0] != short {

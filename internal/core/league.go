@@ -1,6 +1,9 @@
 package core
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type League string
 
@@ -8,6 +11,8 @@ const (
 	LeagueNBA  League = "nba"
 	LeagueWNBA League = "wnba"
 )
+
+func (l League) Title() string { return strings.ToUpper(string(l)) }
 
 func ParseLeague(s string) (League, error) {
 	switch l := League(s); l {

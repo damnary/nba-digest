@@ -49,14 +49,14 @@ func (s *Service) Handle(ctx context.Context, cmd core.Command) (core.Reply, err
 		if err != nil {
 			return core.Reply{}, err
 		}
-		return core.Reply{Kind: core.ReplyWelcome, Teams: options}, nil
+		return core.Reply{Kind: core.ReplyWelcome, League: league, Teams: options}, nil
 
 	case core.CommandTeams:
 		options, err := s.options(ctx, sub.ID, league)
 		if err != nil {
 			return core.Reply{}, err
 		}
-		return core.Reply{Kind: core.ReplyTeams, Teams: options}, nil
+		return core.Reply{Kind: core.ReplyTeams, League: league, Teams: options}, nil
 
 	case core.CommandToggleTeam:
 		return s.toggle(ctx, sub.ID, league, cmd.Team)
@@ -113,7 +113,7 @@ func (s *Service) toggle(ctx context.Context, id core.SubscriberID, league core.
 	if err != nil {
 		return core.Reply{}, err
 	}
-	return core.Reply{Kind: kind, Team: team, Teams: options}, nil
+	return core.Reply{Kind: kind, League: league, Team: team, Teams: options}, nil
 }
 
 func (s *Service) options(ctx context.Context, id core.SubscriberID, league core.League) ([]core.TeamOption, error) {
@@ -139,7 +139,7 @@ func (s *Service) options(ctx context.Context, id core.SubscriberID, league core
 		options = append(options, core.TeamOption{Team: team, Selected: selected[team.Code]})
 	}
 	slices.SortStableFunc(options, func(a, b core.TeamOption) int {
-		return cmp.Compare(a.Team.Code, b.Team.Code)
+		return cmp.Compare(a.Team.Name, b.Team.Name)
 	})
 	return options, nil
 }

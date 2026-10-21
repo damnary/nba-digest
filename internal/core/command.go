@@ -40,6 +40,7 @@ type TeamOption struct {
 
 type Reply struct {
 	Kind    ReplyKind
+	League  League
 	Teams   []TeamOption
 	Team    Team
 	Enabled bool

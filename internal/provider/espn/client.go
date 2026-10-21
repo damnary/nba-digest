@@ -17,7 +17,7 @@ import (
 const (
 	defaultSiteBase = "https://site.api.espn.com/apis/site/v2/sports/basketball"
 	defaultCoreBase = "https://sports.core.api.espn.com/v2/sports/basketball/leagues"
-	defaultPageSize = 25
+	defaultPageSize = 100
 )
 
 type Client struct {

@@ -33,8 +33,8 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/nba_digest?sslmode=disable
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
-      LEAGUE: ${LEAGUE:-wnba}
-      DIGEST_AT: ${DIGEST_AT:-08:00}
+      LEAGUE: ${LEAGUE:-nba}
+      DIGEST_AT: ${DIGEST_AT:-10:00}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Europe/Moscow}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:

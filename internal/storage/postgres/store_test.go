@@ -153,7 +153,7 @@ func TestEnsureSubscriberIsIdempotent(t *testing.T) {
 	if first.Timezone.String() != "Europe/Moscow" {
 		t.Errorf("unexpected timezone: %s", first.Timezone)
 	}
-	if first.DigestAt != (core.DailyTime{Hour: 8}) {
+	if first.DigestAt != (core.DailyTime{Hour: 10}) {
 		t.Errorf("unexpected digest time: %s", first.DigestAt)
 	}
 	if !first.AlertsOn {

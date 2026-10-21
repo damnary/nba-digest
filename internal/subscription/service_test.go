@@ -123,18 +123,23 @@ func TestStartOffersEveryTeamUnselected(t *testing.T) {
 	}
 }
 
-func TestTeamOptionsAreSortedByCode(t *testing.T) {
-	svc, _ := newService(t)
+func TestTeamOptionsAreSortedByName(t *testing.T) {
+	svc, store := newService(t)
+	store.teams = []core.Team{
+		{League: core.LeagueWNBA, Code: "LAS", Name: "Los Angeles Sparks"},
+		{League: core.LeagueWNBA, Code: "LVA", Name: "Las Vegas Aces"},
+		{League: core.LeagueWNBA, Code: "CHI", Name: "Chicago Sky"},
+	}
 
 	reply, err := svc.Handle(t.Context(), core.Command{ChatID: 1, Kind: core.CommandTeams})
 	if err != nil {
 		t.Fatalf("teams: %v", err)
 	}
 
-	want := []core.TeamCode{"LVA", "NYL", "SEA"}
+	want := []core.TeamCode{"CHI", "LVA", "LAS"}
 	for i, code := range want {
 		if reply.Teams[i].Team.Code != code {
-			t.Fatalf("option %d = %s, want %s", i, reply.Teams[i].Team.Code, code)
+			t.Fatalf("option %d = %s, want %s: buttons carry names, so they sort by name", i, reply.Teams[i].Team.Code, code)
 		}
 	}
 }
