@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -16,6 +17,12 @@ const (
 	EventLeadChange  EventKind = "lead_change"
 	EventCloseFinish EventKind = "close_finish"
 )
+
+var notifiableKinds = []EventKind{EventCloseFinish}
+
+func NotifiableKinds() []EventKind { return slices.Clone(notifiableKinds) }
+
+func (k EventKind) Notifiable() bool { return slices.Contains(notifiableKinds, k) }
 
 type RunInfo struct {
 	Team    TeamCode

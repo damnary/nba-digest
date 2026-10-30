@@ -15,7 +15,7 @@ type Store interface {
 	CreateDeliveries(ctx context.Context, eventID core.EventID, subs []core.SubscriberID) (int, error)
 	PendingRecipients(ctx context.Context, eventID core.EventID) ([]core.Subscriber, error)
 	MarkDelivery(ctx context.Context, id core.SubscriberID, eventID core.EventID, status core.DeliveryStatus) error
-	EventsNeedingDelivery(ctx context.Context, since time.Time) ([]core.Event, error)
+	EventsNeedingDelivery(ctx context.Context, since time.Time, kinds []core.EventKind) ([]core.Event, error)
 }
 
 type Sender interface {
@@ -122,7 +122,7 @@ func (d *Dispatcher) retryLoop(ctx context.Context) {
 }
 
 func (d *Dispatcher) catchUp(ctx context.Context) error {
-	events, err := d.store.EventsNeedingDelivery(ctx, d.now().Add(-core.CatchUpWindow))
+	events, err := d.store.EventsNeedingDelivery(ctx, d.now().Add(-core.CatchUpWindow), core.NotifiableKinds())
 	if err != nil {
 		return err
 	}
@@ -140,6 +140,10 @@ func (d *Dispatcher) catchUp(ctx context.Context) error {
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, event core.Event) error {
+	if !event.Kind.Notifiable() {
+		return nil
+	}
+
 	subs, err := d.store.SubscribersForTeams(ctx, event.League, event.Teams)
 	if err != nil {
 		return fmt.Errorf("find subscribers: %w", err)

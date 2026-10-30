@@ -81,15 +81,25 @@ func (s *Store) PendingRecipients(ctx context.Context, eventID core.EventID) ([]
 	return out, nil
 }
 
-func (s *Store) EventsNeedingDelivery(ctx context.Context, since time.Time) ([]core.Event, error) {
+func (s *Store) EventsNeedingDelivery(ctx context.Context, since time.Time, kinds []core.EventKind) ([]core.Event, error) {
+	if len(kinds) == 0 {
+		return nil, nil
+	}
+
+	wanted := make([]string, len(kinds))
+	for i, k := range kinds {
+		wanted[i] = string(k)
+	}
+
 	rows, err := s.pool.Query(ctx,
 		`SELECT e.id, e.game_id, e.league, e.kind, e.teams, e.period, e.clock,
 		        e.home_score, e.away_score, e.run_team, e.run_points, e.run_against, e.occurred_at
 		 FROM game_events e
 		 LEFT JOIN alert_deliveries d ON d.event_id = e.id
-		 WHERE e.created_at >= $1 AND (d.event_id IS NULL OR d.status = 'pending')
+		 WHERE e.created_at >= $1 AND e.kind = ANY($2)
+		   AND (d.event_id IS NULL OR d.status = 'pending')
 		 GROUP BY e.id
-		 ORDER BY e.occurred_at`, since)
+		 ORDER BY e.occurred_at`, since, wanted)
 	if err != nil {
 		return nil, fmt.Errorf("query events needing delivery: %w", err)
 	}

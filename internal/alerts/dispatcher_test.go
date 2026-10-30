@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -97,11 +98,18 @@ func (f *fakeStore) MarkDelivery(_ context.Context, id core.SubscriberID, event 
 	return nil
 }
 
-func (f *fakeStore) EventsNeedingDelivery(context.Context, time.Time) ([]core.Event, error) {
+func (f *fakeStore) EventsNeedingDelivery(_ context.Context, _ time.Time, kinds []core.EventKind) ([]core.Event, error) {
 	if f.failCatch {
 		return nil, errors.New("database is down")
 	}
-	return f.catchUp, nil
+
+	var out []core.Event
+	for _, e := range f.catchUp {
+		if slices.Contains(kinds, e.Kind) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 type fakeSender struct {
@@ -139,12 +147,15 @@ func subscriber(id core.SubscriberID, chat int64, alerts bool) core.Subscriber {
 
 func testEvent() core.Event {
 	return core.Event{
-		ID:         "wnba:1:run:p3:000142",
+		ID:         "wnba:1:close_finish:p4:000142",
 		GameID:     "wnba:1",
 		League:     core.LeagueWNBA,
-		Kind:       core.EventRun,
+		Kind:       core.EventCloseFinish,
 		Teams:      []core.TeamCode{"NYL", "LVA"},
-		Run:        core.RunInfo{Team: "NYL", Points: 12, Against: 2},
+		Period:     4,
+		Clock:      "02:14",
+		HomeScore:  88,
+		AwayScore:  85,
 		OccurredAt: now.Add(-time.Minute),
 	}
 }
@@ -249,7 +260,7 @@ func TestRunCatchesUpThenConsumes(t *testing.T) {
 	store := newFakeStore(subscriber(1, 100, true))
 
 	missed := testEvent()
-	missed.ID = "wnba:1:run:p2:000050"
+	missed.ID = "wnba:1:close_finish:p4:000050"
 	store.catchUp = []core.Event{missed}
 
 	live := testEvent()
@@ -381,5 +392,26 @@ func TestShutdownDrainsTheBuffer(t *testing.T) {
 	}
 	if bus.Dropped() != 0 {
 		t.Errorf("%d events were dropped instead of drained", bus.Dropped())
+	}
+}
+
+func TestOnlyNotifiableKindsReachSubscribers(t *testing.T) {
+	store := newFakeStore(core.Subscriber{ID: 1, ChatID: 100, AlertsOn: true})
+
+	noisy := testEvent()
+	noisy.ID = "wnba:1:run:p3:000142"
+	noisy.Kind = core.EventRun
+
+	sender := &fakeSender{}
+	d := newDispatcher(store, sender, &fakeConsumer{events: []core.Event{noisy}})
+
+	if err := d.Run(t.Context()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(sender.sent) != 0 {
+		t.Errorf("a run is recorded but never pushed at night, got %d sends", len(sender.sent))
+	}
+	if len(store.created) != 0 {
+		t.Errorf("no delivery row should be created for a silent kind, got %+v", store.created)
 	}
 }

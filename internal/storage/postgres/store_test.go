@@ -156,8 +156,8 @@ func TestEnsureSubscriberIsIdempotent(t *testing.T) {
 	if first.DigestAt != (core.DailyTime{Hour: 10}) {
 		t.Errorf("unexpected digest time: %s", first.DigestAt)
 	}
-	if !first.AlertsOn {
-		t.Error("alerts should be on by default")
+	if first.AlertsOn {
+		t.Error("alerts are opt-in: matches run through the night and the digest already covers them")
 	}
 }
 
@@ -180,7 +180,7 @@ func TestSubscriberSettingsRoundTrip(t *testing.T) {
 	if err := store.SetDigestAt(ctx, sub.ID, core.DailyTime{Hour: 9, Minute: 30}); err != nil {
 		t.Fatalf("set digest at: %v", err)
 	}
-	if err := store.SetAlerts(ctx, sub.ID, false); err != nil {
+	if err := store.SetAlerts(ctx, sub.ID, true); err != nil {
 		t.Fatalf("set alerts: %v", err)
 	}
 
@@ -194,8 +194,8 @@ func TestSubscriberSettingsRoundTrip(t *testing.T) {
 	if got.DigestAt != (core.DailyTime{Hour: 9, Minute: 30}) {
 		t.Errorf("digest at: %s", got.DigestAt)
 	}
-	if got.AlertsOn {
-		t.Error("alerts should be off")
+	if !got.AlertsOn {
+		t.Error("alerts should be on")
 	}
 }
 

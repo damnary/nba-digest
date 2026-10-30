@@ -154,7 +154,9 @@ func TestEventsNeedingDelivery(t *testing.T) {
 		t.Fatalf("mark: %v", err)
 	}
 
-	got, err := store.EventsNeedingDelivery(ctx, time.Now().Add(-time.Hour))
+	runs := []core.EventKind{core.EventRun}
+
+	got, err := store.EventsNeedingDelivery(ctx, time.Now().Add(-time.Hour), runs)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -166,11 +168,34 @@ func TestEventsNeedingDelivery(t *testing.T) {
 		t.Fatalf("want the stuck and the orphan events, got %+v", ids)
 	}
 
-	none, err := store.EventsNeedingDelivery(ctx, time.Now().Add(time.Hour))
+	none, err := store.EventsNeedingDelivery(ctx, time.Now().Add(time.Hour), runs)
 	if err != nil {
 		t.Fatalf("future window: %v", err)
 	}
 	if len(none) != 0 {
 		t.Errorf("window ignored, got %d events", len(none))
+	}
+}
+
+func TestEventsNeedingDeliveryHonoursTheKindFilter(t *testing.T) {
+	store := newTestStore(t)
+	ctx := t.Context()
+	seedGame(t, store, "wnba:1")
+
+	noisy := testEvent("wnba:1", 300)
+	worthWaking := testEvent("wnba:1", 301)
+	worthWaking.Kind = core.EventCloseFinish
+	worthWaking.ID = core.NewEventID("wnba:1", core.EventCloseFinish, 4, 301)
+
+	if _, err := store.SaveEvents(ctx, []core.Event{noisy, worthWaking}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := store.EventsNeedingDelivery(ctx, time.Now().Add(-time.Hour), core.NotifiableKinds())
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != worthWaking.ID {
+		t.Fatalf("only notifiable kinds may reach a sleeping subscriber, got %+v", got)
 	}
 }

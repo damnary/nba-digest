@@ -31,7 +31,7 @@ func replyText(reply core.Reply) string {
 	switch reply.Kind {
 	case core.ReplyWelcome:
 		return fmt.Sprintf("<b>Дайджест матчей %s</b>\n\n", reply.League.Title()) +
-			"Утром присылаю итоги вчерашних матчей, по ходу игры — уведомления о переломных моментах.\n\n" +
+			"Каждое утро присылаю итоги ночных матчей: счёт, лучшие игроки, кто вытащил концовку.\n\n" +
 			"Выбери команды, за которыми следишь:"
 
 	case core.ReplyTeams:
@@ -45,7 +45,9 @@ func replyText(reply core.Reply) string {
 
 	case core.ReplyAlerts:
 		if reply.Enabled {
-			return "<b>Уведомления включены</b>\n\nБуду писать по ходу матчей твоих команд."
+			return "<b>Уведомления включены</b>\n\n" +
+				"Напишу ночью, если у твоей команды концовка на волоске — " +
+				"разница в пять очков или меньше за три минуты до сирены."
 		}
 		return "<b>Уведомления выключены</b>\n\nУтренний дайджест продолжит приходить."
 
@@ -58,7 +60,8 @@ func replyText(reply core.Reply) string {
 	default:
 		return "<b>Что я умею</b>\n\n" +
 			"/teams — выбрать команды\n" +
-			"/alerts on | off — уведомления по ходу матча\n" +
+			"/alerts on — писать ночью о концовках на волоске, по умолчанию выключено\n" +
+			"/alerts off — выключить их обратно\n" +
 			"/stop — отписаться от всего"
 	}
 }
