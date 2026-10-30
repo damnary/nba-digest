@@ -29,7 +29,7 @@ func (c *Client) SendEvent(ctx context.Context, chatID int64, event core.Event) 
 }
 
 func (c *Client) SendDigest(ctx context.Context, chatID int64, digest core.Digest) error {
-	for _, part := range splitMessage(FormatDigest(digest)) {
+	for _, part := range DigestParts(digest) {
 		if err := c.SendMessage(ctx, chatID, part, nil); err != nil {
 			return err
 		}
@@ -96,69 +96,6 @@ func FormatEvent(event core.Event) string {
 		return fmt.Sprintf("<b>Концовка на волоске</b>\n\n<b>%s</b>\n%s", score, moment(event))
 	}
 	return score
-}
-
-func FormatDigest(digest core.Digest) string {
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "<b>Матчи за %s</b>\n", formatDay(digest.Day))
-
-	for _, game := range digest.FeaturedGames() {
-		b.WriteString("\n")
-		writeFeatured(&b, game)
-	}
-
-	rest := digest.RestGames()
-	if len(rest) > 0 {
-		b.WriteString("\n———\n\n<b>Остальные матчи</b>\n\n")
-		for _, game := range rest {
-			writeBrief(&b, game)
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-func writeFeatured(b *strings.Builder, game core.DigestGame) {
-	g := game.Game
-	fmt.Fprintf(b, "<b>%s  %d : %d  %s</b>\n\n",
-		esc(g.Home.Team.Name), g.Home.Score, g.Away.Score, esc(g.Away.Team.Name))
-
-	for _, side := range []core.TeamScore{g.Home, g.Away} {
-		top := game.Stats.ByTeam(side.Team.Code).TopScorers(2)
-		if len(top) == 0 {
-			continue
-		}
-
-		scorers := make([]string, len(top))
-		for i, l := range top {
-			scorers[i] = fmt.Sprintf("%s %d", esc(l.Player.Name), l.Points)
-		}
-		fmt.Fprintf(b, "%s — %s\n", side.Team.Code, strings.Join(scorers, ", "))
-	}
-
-	var extras []string
-	if l, ok := game.Stats.TopRebounder(); ok {
-		extras = append(extras, fmt.Sprintf("Подборы: %s (%d)", esc(l.Player.Name), l.Rebounds))
-	}
-	if l, ok := game.Stats.TopAssister(); ok {
-		extras = append(extras, fmt.Sprintf("Передачи: %s (%d)", esc(l.Player.Name), l.Assists))
-	}
-	if l, ok := game.Stats.ClutchLeader(); ok {
-		extras = append(extras, fmt.Sprintf("Концовку вытащил: %s (%d с 4-й)", esc(l.Player.Name), l.ClutchPoints))
-	}
-	if len(extras) > 0 {
-		b.WriteString("\n" + strings.Join(extras, "\n") + "\n")
-	}
-}
-
-func writeBrief(b *strings.Builder, game core.DigestGame) {
-	g := game.Game
-	fmt.Fprintf(b, "%s  <b>%d : %d</b>  %s", g.Home.Team.Code, g.Home.Score, g.Away.Score, g.Away.Team.Code)
-
-	if top := game.Stats.TopScorers(1); len(top) > 0 {
-		fmt.Fprintf(b, " — %s %d", esc(top[0].Player.Name), top[0].Points)
-	}
-	b.WriteString("\n")
 }
 
 func formatDay(d core.Day) string {

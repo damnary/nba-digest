@@ -34,7 +34,7 @@ type GameStats struct {
 }
 
 func (s GameStats) ByTeam(code TeamCode) GameStats {
-	out := GameStats{GameID: s.GameID, League: s.League}
+	out := GameStats{GameID: s.GameID, League: s.League, ClutchMargin: s.ClutchMargin}
 	for _, l := range s.Lines {
 		if l.Player.Team == code {
 			out.Lines = append(out.Lines, l)
