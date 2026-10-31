@@ -95,6 +95,12 @@ func (c *Client) mapScoreboard(league core.League, resp scoreboardResponse, obse
 				},
 				Score: score,
 			}
+			for _, r := range side.Records {
+				if r.Type == "total" {
+					ts.Record = r.Summary
+					break
+				}
+			}
 			if side.HomeAway == "home" {
 				game.Home = ts
 			} else {

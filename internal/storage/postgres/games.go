@@ -11,8 +11,8 @@ import (
 )
 
 const gameColumns = `g.id, g.league, g.starts_at, g.status, g.period, g.clock,
-	g.home_code, ht.name, g.home_score,
-	g.away_code, aw.name, g.away_score,
+	g.home_code, ht.name, g.home_score, g.home_record,
+	g.away_code, aw.name, g.away_score, g.away_record,
 	g.observed_at`
 
 const gameJoins = `FROM games g
@@ -24,20 +24,24 @@ func (s *Store) UpsertGames(ctx context.Context, games []core.Game) error {
 	for _, g := range games {
 		batch.Queue(
 			`INSERT INTO games (id, league, starts_at, status, home_code, away_code,
-			                    home_score, away_score, period, clock, observed_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			                    home_score, away_score, home_record, away_record,
+			                    period, clock, observed_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			 ON CONFLICT (id) DO UPDATE SET
 			     status = EXCLUDED.status,
 			     starts_at = EXCLUDED.starts_at,
 			     home_score = EXCLUDED.home_score,
 			     away_score = EXCLUDED.away_score,
+			     home_record = EXCLUDED.home_record,
+			     away_record = EXCLUDED.away_record,
 			     period = EXCLUDED.period,
 			     clock = EXCLUDED.clock,
 			     observed_at = EXCLUDED.observed_at
 			 WHERE games.observed_at <= EXCLUDED.observed_at`,
 			string(g.ID), string(g.League), g.StartsAt, string(g.Status),
 			string(g.Home.Team.Code), string(g.Away.Team.Code),
-			g.Home.Score, g.Away.Score, g.Period, g.Clock, g.ObservedAt,
+			g.Home.Score, g.Away.Score, g.Home.Record, g.Away.Record,
+			g.Period, g.Clock, g.ObservedAt,
 		)
 	}
 	if err := s.pool.SendBatch(ctx, batch).Close(); err != nil {
@@ -74,8 +78,8 @@ func (s *Store) queryGames(ctx context.Context, q string, args ...any) ([]core.G
 		var g core.Game
 		err := rows.Scan(
 			&g.ID, &g.League, &g.StartsAt, &g.Status, &g.Period, &g.Clock,
-			&g.Home.Team.Code, &g.Home.Team.Name, &g.Home.Score,
-			&g.Away.Team.Code, &g.Away.Team.Name, &g.Away.Score,
+			&g.Home.Team.Code, &g.Home.Team.Name, &g.Home.Score, &g.Home.Record,
+			&g.Away.Team.Code, &g.Away.Team.Name, &g.Away.Score, &g.Away.Record,
 			&g.ObservedAt,
 		)
 		if err != nil {

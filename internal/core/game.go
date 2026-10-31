@@ -14,8 +14,9 @@ const (
 )
 
 type TeamScore struct {
-	Team  Team
-	Score int
+	Team   Team
+	Score  int
+	Record string
 }
 
 type Game struct {

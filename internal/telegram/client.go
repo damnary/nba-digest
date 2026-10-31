@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -35,6 +36,8 @@ type Client struct {
 	sleep   func(context.Context, time.Duration) error
 	mu      sync.Mutex
 	perChat map[int64]*rate.Limiter
+
+	iconsRefused atomic.Bool
 }
 
 type ClientOption func(*Client)
@@ -125,8 +128,25 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, kb 
 	if err := c.waitForChat(ctx, chatID); err != nil {
 		return err
 	}
+	if c.iconsRefused.Load() {
+		text = stripIcons(text)
+	}
+
 	req := sendMessageRequest{ChatID: chatID, Text: text, ParseMode: parseMode, ReplyMarkup: kb}
+	err := c.call(ctx, "sendMessage", req, nil)
+	if err == nil || !iconsWereRejected(err, text) {
+		return err
+	}
+
+	c.iconsRefused.Store(true)
+	req.Text = stripIcons(text)
 	return c.call(ctx, "sendMessage", req, nil)
+}
+
+func iconsWereRejected(err error, text string) bool {
+	var apiErr *apiError
+	return strings.Contains(text, iconOpenTag) &&
+		errors.As(err, &apiErr) && apiErr.Code == http.StatusBadRequest
 }
 
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, kb *keyboard) error {

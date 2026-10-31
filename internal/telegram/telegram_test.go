@@ -497,3 +497,45 @@ func TestPermanentRejectionsAreMarkedUnreachable(t *testing.T) {
 		})
 	}
 }
+
+func TestIconsAreDroppedOnceTelegramRefusesThem(t *testing.T) {
+	var sent []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		text, _ := body["text"].(string)
+		sent = append(sent, text)
+
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(text, "tg-emoji") {
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: CUSTOM_EMOJI_INVALID"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient("token", WithBaseURL(srv.URL))
+	text := icon(core.Team{League: core.LeagueNBA, Code: "NY"}) + " <b>Knicks</b>"
+
+	if err := client.SendMessage(t.Context(), 1, text, nil); err != nil {
+		t.Fatalf("the message must still go out without icons: %v", err)
+	}
+	if len(sent) != 2 {
+		t.Fatalf("want one rejected attempt and one plain retry, got %d", len(sent))
+	}
+	if strings.Contains(sent[1], "tg-emoji") {
+		t.Errorf("the retry still carried icons: %q", sent[1])
+	}
+
+	if err := client.SendMessage(t.Context(), 1, text, nil); err != nil {
+		t.Fatalf("second send: %v", err)
+	}
+	if len(sent) != 3 {
+		t.Errorf("after one refusal icons must be dropped upfront, got %d calls", len(sent))
+	}
+	if strings.Contains(sent[2], "tg-emoji") {
+		t.Errorf("icons came back after a refusal: %q", sent[2])
+	}
+}

@@ -17,7 +17,11 @@ type scoreboardResponse struct {
 			Competitors []struct {
 				HomeAway string `json:"homeAway"`
 				Score    string `json:"score"`
-				Team     struct {
+				Records  []struct {
+					Type    string `json:"type"`
+					Summary string `json:"summary"`
+				} `json:"records"`
+				Team struct {
 					ID           string `json:"id"`
 					Abbreviation string `json:"abbreviation"`
 					DisplayName  string `json:"displayName"`

@@ -75,15 +75,15 @@ func featuredBlock(game core.DigestGame) string {
 	winner, loser := sides(game.Game)
 
 	b.WriteString("<blockquote>")
-	fmt.Fprintf(&b, "<b>%s %d</b> — %d %s",
-		esc(winner.Team.Name), winner.Score, loser.Score, esc(loser.Team.Name))
-
 	for _, side := range []core.TeamScore{winner, loser} {
-		writeSide(&b, game.Stats.ByTeam(side.Team.Code), side.Team.Code)
+		if side != winner {
+			b.WriteString("\n")
+		}
+		writeSide(&b, game.Stats.ByTeam(side.Team.Code), side, side == winner)
 	}
 
 	if l, ok := game.Stats.ByTeam(winner.Team.Code).ClutchLeader(); ok {
-		fmt.Fprintf(&b, "\n\nконцовку вытащил %s — %s в четвёртой",
+		fmt.Fprintf(&b, "\nконцовку вытащил %s — %s в четвёртой",
 			esc(lastName(l.Player.Name)), plural(l.ClutchPoints, "очко", "очка", "очков"))
 	}
 
@@ -91,17 +91,25 @@ func featuredBlock(game core.DigestGame) string {
 	return b.String()
 }
 
-func writeSide(b *strings.Builder, stats core.GameStats, code core.TeamCode) {
-	top := stats.TopScorers(2)
-	if len(top) == 0 {
-		return
+func writeSide(b *strings.Builder, stats core.GameStats, side core.TeamScore, won bool) {
+	score := fmt.Sprintf("%s: %d", esc(side.Team.Name), side.Score)
+	if won {
+		score = "<b>" + score + "</b>"
 	}
+	fmt.Fprintf(b, "%s%s", withSpace(icon(side.Team)), score)
 
-	scorers := make([]string, len(top))
-	for i, l := range top {
-		scorers[i] = fmt.Sprintf("%s %d", esc(lastName(l.Player.Name)), l.Points)
+	if side.Record != "" {
+		fmt.Fprintf(b, " (%s)", esc(side.Record))
 	}
-	fmt.Fprintf(b, "\n\n%s — %s", esc(string(code)), strings.Join(scorers, ", "))
+	b.WriteString("\n")
+
+	if top := stats.TopScorers(2); len(top) > 0 {
+		scorers := make([]string, len(top))
+		for i, l := range top {
+			scorers[i] = fmt.Sprintf("%s %d", esc(lastName(l.Player.Name)), l.Points)
+		}
+		fmt.Fprintf(b, "%s\n", strings.Join(scorers, ", "))
+	}
 
 	var extras []string
 	if l, ok := stats.TopRebounder(); ok {
@@ -111,7 +119,7 @@ func writeSide(b *strings.Builder, stats core.GameStats, code core.TeamCode) {
 		extras = append(extras, fmt.Sprintf("передачи %s %d", esc(lastName(l.Player.Name)), l.Assists))
 	}
 	if len(extras) > 0 {
-		fmt.Fprintf(b, "\n%s", strings.Join(extras, " · "))
+		fmt.Fprintf(b, "%s\n", strings.Join(extras, " · "))
 	}
 }
 
@@ -126,11 +134,13 @@ func restBlock(games []core.DigestGame, collapsed bool) string {
 	width := codeWidth(games)
 	for _, game := range games {
 		winner, loser := sides(game.Game)
-		fmt.Fprintf(&b, "\n<code>%-*s %3d : %-3d %s</code>",
-			width, esc(string(winner.Team.Code)), winner.Score, loser.Score, esc(string(loser.Team.Code)))
+		fmt.Fprintf(&b, "\n%s<code>%-*s %3d : %-3d %s</code>%s",
+			withSpace(icon(winner.Team)), width, esc(string(winner.Team.Code)),
+			winner.Score, loser.Score, esc(string(loser.Team.Code)),
+			afterSpace(icon(loser.Team)))
 
 		if top := game.Stats.TopScorers(1); len(top) > 0 {
-			fmt.Fprintf(&b, " %s %d", esc(lastName(top[0].Player.Name)), top[0].Points)
+			fmt.Fprintf(&b, " · %s %d", esc(lastName(top[0].Player.Name)), top[0].Points)
 		}
 	}
 
@@ -150,6 +160,20 @@ func codeWidth(games []core.DigestGame) int {
 		}
 	}
 	return width
+}
+
+func withSpace(s string) string {
+	if s == "" {
+		return ""
+	}
+	return s + " "
+}
+
+func afterSpace(s string) string {
+	if s == "" {
+		return ""
+	}
+	return " " + s
 }
 
 func sides(game core.Game) (core.TeamScore, core.TeamScore) {

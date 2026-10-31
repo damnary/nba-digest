@@ -19,8 +19,8 @@ func digestGame(home, homeName string, hs int, away, awayName string, as int, fe
 			ID:     id,
 			League: core.LeagueNBA,
 			Status: core.GameFinal,
-			Home:   core.TeamScore{Team: team(home, homeName), Score: hs},
-			Away:   core.TeamScore{Team: team(away, awayName), Score: as},
+			Home:   core.TeamScore{Team: team(home, homeName), Score: hs, Record: "3-3"},
+			Away:   core.TeamScore{Team: team(away, awayName), Score: as, Record: "4-2"},
 		},
 		Stats:    core.GameStats{GameID: id, League: core.LeagueNBA},
 		Featured: featured,
@@ -41,8 +41,14 @@ func TestWinnerComesFirstWhoeverPlayedAtHome(t *testing.T) {
 	awayWon := testDigest(digestGame("CHI", "Chicago Bulls", 127, "NY", "New York Knicks", 133, true))
 
 	for name, text := range map[string]string{"home won": FormatDigest(homeWon), "away won": FormatDigest(awayWon)} {
-		if !strings.Contains(text, "<b>New York Knicks 133</b> — 127 Chicago Bulls") {
-			t.Errorf("%s: the winner must open the line, got:\n%s", name, text)
+		want := "<b>New York Knicks: 133</b>"
+		at := strings.Index(text, want)
+		if at < 0 {
+			t.Errorf("%s: the winner must be bold, got:\n%s", name, text)
+			continue
+		}
+		if loser := strings.Index(text, "Chicago Bulls: 127"); loser < at {
+			t.Errorf("%s: the winner must come first, got:\n%s", name, text)
 		}
 	}
 }
@@ -102,7 +108,7 @@ func TestRestIsCollapsedOnlyWhenSomethingElseIsShown(t *testing.T) {
 func TestGameWithoutABoxScoreStillRenders(t *testing.T) {
 	text := FormatDigest(testDigest(digestGame("NY", "New York Knicks", 133, "CHI", "Chicago Bulls", 127, true)))
 
-	if !strings.Contains(text, "New York Knicks 133") {
+	if !strings.Contains(text, "New York Knicks: 133") {
 		t.Fatalf("score is missing:\n%s", text)
 	}
 	if strings.Contains(text, "подборы") || strings.Contains(text, "концовку") {
@@ -204,9 +210,9 @@ func TestEachTeamGetsItsOwnLeaders(t *testing.T) {
 	text := FormatDigest(testDigest(scoredGame(true)))
 
 	wantLines := []string{
-		"NY — Brunson 38, Towns 21",
+		"Brunson 38, Towns 21",
 		"подборы Towns 13 · передачи Brunson 9",
-		"CHI — Powell 30, Giddey 14",
+		"Powell 30, Giddey 14",
 		"подборы Giddey 8 · передачи Giddey 12",
 	}
 	for _, want := range wantLines {
@@ -219,16 +225,116 @@ func TestEachTeamGetsItsOwnLeaders(t *testing.T) {
 	nyAt, chiAt := -1, -1
 	for i, line := range lines {
 		switch {
-		case strings.HasPrefix(line, "NY — "):
+		case strings.Contains(line, "New York Knicks: 133"):
 			nyAt = i
-		case strings.HasPrefix(line, "CHI — "):
+		case strings.Contains(line, "Chicago Bulls: 127"):
 			chiAt = i
 		}
 	}
 	if nyAt < 0 || chiAt < 0 || chiAt <= nyAt {
 		t.Fatalf("teams out of order: NY at %d, CHI at %d", nyAt, chiAt)
 	}
-	if lines[nyAt+1] != "подборы Towns 13 · передачи Brunson 9" {
-		t.Errorf("a team's leaders must sit right under its own scorers, got %q", lines[nyAt+1])
+	if lines[nyAt+1] != "Brunson 38, Towns 21" {
+		t.Errorf("scorers must sit right under their own team, got %q", lines[nyAt+1])
+	}
+	if lines[nyAt+2] != "подборы Towns 13 · передачи Brunson 9" {
+		t.Errorf("leaders must follow their own team's scorers, got %q", lines[nyAt+2])
+	}
+}
+
+func TestIconsLeadEachTeam(t *testing.T) {
+	text := FormatDigest(testDigest(
+		scoredGame(true),
+		digestGame("LAL", "Los Angeles Lakers", 103, "LAC", "LA Clippers", 87, false),
+	))
+
+	for _, code := range []core.TeamCode{"NY", "CHI", "LAL"} {
+		want := icon(core.Team{League: core.LeagueNBA, Code: code})
+		if want == "" {
+			t.Fatalf("no icon configured for %s", code)
+		}
+		if !strings.Contains(text, want) {
+			t.Errorf("icon for %s is missing from the digest", code)
+		}
+	}
+}
+
+func TestUnknownLeagueGetsNoIcon(t *testing.T) {
+	if got := icon(core.Team{League: core.LeagueWNBA, Code: "NY"}); got != "" {
+		t.Errorf("the pack only covers the NBA, got %q for a WNBA team sharing the code", got)
+	}
+	if got := icon(core.Team{League: core.LeagueNBA, Code: "ZZZ"}); got != "" {
+		t.Errorf("an unknown code must render nothing, got %q", got)
+	}
+}
+
+func TestStripIconsLeavesTheMessageIntact(t *testing.T) {
+	withIcons := FormatDigest(testDigest(scoredGame(true)))
+	plain := stripIcons(withIcons)
+
+	if strings.Contains(plain, "tg-emoji") {
+		t.Errorf("icons survived stripping:\n%s", plain)
+	}
+	if !strings.Contains(plain, "<b>New York Knicks: 133</b> (3-3)") {
+		t.Errorf("stripping damaged the text:\n%s", plain)
+	}
+	if strings.Contains(plain, "  ") {
+		t.Errorf("stripping left double spaces:\n%s", plain)
+	}
+	for _, tag := range []string{"<b>", "<blockquote>"} {
+		if strings.Count(plain, tag) != strings.Count(withIcons, tag) {
+			t.Errorf("stripping removed %s tags", tag)
+		}
+	}
+}
+
+func TestSeasonRecordFollowsTheScore(t *testing.T) {
+	text := FormatDigest(testDigest(scoredGame(true)))
+
+	if !strings.Contains(text, "<b>New York Knicks: 133</b> (3-3)") {
+		t.Errorf("the winner's record is missing:\n%s", text)
+	}
+	if !strings.Contains(text, "Chicago Bulls: 127 (4-2)") {
+		t.Errorf("the loser's record is missing:\n%s", text)
+	}
+}
+
+func TestMissingRecordLeavesNoEmptyBrackets(t *testing.T) {
+	game := scoredGame(true)
+	game.Game.Home.Record = ""
+	game.Game.Away.Record = ""
+
+	text := FormatDigest(testDigest(game))
+	if strings.Contains(text, "()") {
+		t.Errorf("a game recorded before we tracked records must not show empty brackets:\n%s", text)
+	}
+	if !strings.Contains(text, "<b>New York Knicks: 133</b>\n") {
+		t.Errorf("the score line should simply end, got:\n%s", text)
+	}
+}
+
+func TestBothCrestsShowInTheCompactList(t *testing.T) {
+	text := FormatDigest(testDigest(
+		scoredGame(true),
+		digestGame("LAL", "Los Angeles Lakers", 103, "LAC", "LA Clippers", 87, false),
+	))
+
+	var row string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "<code>") {
+			row = line
+		}
+	}
+	if row == "" {
+		t.Fatal("no compact row rendered")
+	}
+	if n := strings.Count(row, "tg-emoji emoji-id"); n != 2 {
+		t.Errorf("both teams need a crest, got %d in %q", n, row)
+	}
+	for _, code := range []core.TeamCode{"LAL", "LAC"} {
+		want := icon(core.Team{League: core.LeagueNBA, Code: code})
+		if !strings.Contains(row, want) {
+			t.Errorf("crest for %s missing from %q", code, row)
+		}
 	}
 }
