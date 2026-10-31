@@ -152,14 +152,7 @@ func TestWebhookRejectsWrongSecret(t *testing.T) {
 	})
 
 	update := Update{UpdateID: 1}
-	update.Message = &struct {
-		MessageID int64  `json:"message_id"`
-		Text      string `json:"text"`
-		Chat      struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	}{MessageID: 10, Text: "/start"}
-	update.Message.Chat.ID = 42
+	update.Message = &incoming{MessageID: 10, Text: "/start", Chat: chat{ID: 42, Type: "private"}}
 
 	if rec := post(t, hook, "wrong", update); rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rec.Code)
@@ -191,14 +184,7 @@ func TestWebhookAnswersATextCommand(t *testing.T) {
 	})
 
 	update := Update{UpdateID: 1}
-	update.Message = &struct {
-		MessageID int64  `json:"message_id"`
-		Text      string `json:"text"`
-		Chat      struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	}{MessageID: 10, Text: "/start"}
-	update.Message.Chat.ID = 42
+	update.Message = &incoming{MessageID: 10, Text: "/start", Chat: chat{ID: 42, Type: "private"}}
 
 	if rec := post(t, hook, "s3cret", update); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -249,18 +235,13 @@ func TestWebhookEditsOnCallback(t *testing.T) {
 		Data    string `json:"data"`
 		Message *struct {
 			MessageID int64 `json:"message_id"`
-			Chat      struct {
-				ID int64 `json:"id"`
-			} `json:"chat"`
+			Chat      chat  `json:"chat"`
 		} `json:"message"`
 	}{ID: "cb-1", Data: "t:SEA"}
 	update.CallbackQuery.Message = &struct {
 		MessageID int64 `json:"message_id"`
-		Chat      struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	}{MessageID: 77}
-	update.CallbackQuery.Message.Chat.ID = 42
+		Chat      chat  `json:"chat"`
+	}{MessageID: 77, Chat: chat{ID: 42, Type: "private"}}
 
 	if rec := post(t, hook, "s3cret", update); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -537,5 +518,124 @@ func TestIconsAreDroppedOnceTelegramRefusesThem(t *testing.T) {
 	}
 	if strings.Contains(sent[2], "tg-emoji") {
 		t.Errorf("icons came back after a refusal: %q", sent[2])
+	}
+}
+
+func TestOnlyPrivateChatsBecomeSubscribers(t *testing.T) {
+	cases := []struct {
+		name     string
+		update   Update
+		wantsCmd bool
+	}{
+		{
+			name:     "private message",
+			update:   Update{UpdateID: 1, Message: &incoming{MessageID: 1, Text: "/start", Chat: chat{ID: 42, Type: "private"}}},
+			wantsCmd: true,
+		},
+		{
+			name:   "group message",
+			update: Update{UpdateID: 2, Message: &incoming{MessageID: 2, Text: "/start", Chat: chat{ID: -100, Type: "group"}}},
+		},
+		{
+			name:   "supergroup message",
+			update: Update{UpdateID: 3, Message: &incoming{MessageID: 3, Text: "/start", Chat: chat{ID: -200, Type: "supergroup"}}},
+		},
+		{
+			name:   "channel post",
+			update: Update{UpdateID: 4, ChannelPost: &incoming{MessageID: 4, Text: "ping", Chat: chat{ID: -300, Type: "channel"}}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := parseUpdate(tc.update)
+			if in.valid != tc.wantsCmd {
+				t.Fatalf("valid = %v, want %v: a shared chat must never be signed up for a digest", in.valid, tc.wantsCmd)
+			}
+			if tc.wantsCmd {
+				return
+			}
+			if in.foreignChat == 0 {
+				t.Error("the chat id should be reported so an ops channel can be found in the log")
+			}
+		})
+	}
+}
+
+func TestEveryScreenOffersAWayOnWithoutTyping(t *testing.T) {
+	cases := []struct {
+		name  string
+		reply core.Reply
+	}{
+		{"menu", core.Reply{Kind: core.ReplyMenu, League: core.LeagueNBA}},
+		{"help", core.Reply{Kind: core.ReplyHelp, League: core.LeagueNBA}},
+		{"alerts", core.Reply{Kind: core.ReplyAlerts, League: core.LeagueNBA, Enabled: true}},
+		{"standings", core.Reply{Kind: core.ReplyStandings, League: core.LeagueNBA}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, kb := render(tc.reply)
+			if kb == nil || len(kb.Rows) == 0 {
+				t.Fatal("a screen with no buttons forces the user back to typing commands")
+			}
+			for _, row := range kb.Rows {
+				for _, b := range row {
+					if b.Data == "" {
+						t.Errorf("button %q carries no callback data", b.Text)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMenuButtonsRouteBackToCommands(t *testing.T) {
+	_, kb := render(core.Reply{Kind: core.ReplyMenu, League: core.LeagueNBA})
+
+	want := map[string]core.CommandKind{
+		teamsData:     core.CommandTeams,
+		standingsData: core.CommandStandings,
+		alertsData:    core.CommandToggleAlerts,
+	}
+	seen := map[core.CommandKind]bool{}
+	for _, row := range kb.Rows {
+		for _, b := range row {
+			kind, ok := want[b.Data]
+			if !ok {
+				t.Errorf("unexpected button data %q", b.Data)
+				continue
+			}
+			if got := parseCallback(b.Data); got.Kind != kind {
+				t.Errorf("%q parses to %s, want %s", b.Data, got.Kind, kind)
+			}
+			seen[kind] = true
+		}
+	}
+	if len(seen) != len(want) {
+		t.Errorf("menu is missing buttons, found %v", seen)
+	}
+}
+
+func TestStandingsScreenCanGoBack(t *testing.T) {
+	_, kb := render(core.Reply{Kind: core.ReplyStandings, League: core.LeagueNBA})
+
+	if len(kb.Rows) != 1 || len(kb.Rows[0]) != 1 {
+		t.Fatalf("want a single back button, got %+v", kb.Rows)
+	}
+	if got := parseCallback(kb.Rows[0][0].Data); got.Kind != core.CommandMenu {
+		t.Errorf("back must return to the menu, got %s", got.Kind)
+	}
+}
+
+func TestDigestCarriesItsOwnWayIn(t *testing.T) {
+	kb := digestFooter()
+	if kb == nil || len(kb.Rows) == 0 {
+		t.Fatal("the digest is the one message everyone gets: it must carry an entry point")
+	}
+	for _, b := range kb.Rows[0] {
+		if got := parseCallback(b.Data); got.Kind == core.CommandUnknown {
+			t.Errorf("digest button %q leads nowhere", b.Text)
+		}
 	}
 }

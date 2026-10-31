@@ -20,12 +20,23 @@ type Store interface {
 }
 
 type Service struct {
-	store  Store
-	league core.League
+	store     Store
+	league    core.League
+	standings core.StandingsProvider
 }
 
-func New(store Store, league core.League) *Service {
-	return &Service{store: store, league: league}
+type Option func(*Service)
+
+func WithStandings(p core.StandingsProvider) Option {
+	return func(s *Service) { s.standings = p }
+}
+
+func New(store Store, league core.League, opts ...Option) *Service {
+	svc := &Service{store: store, league: league}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 func (s *Service) Handle(ctx context.Context, cmd core.Command) (core.Reply, error) {
@@ -35,7 +46,7 @@ func (s *Service) Handle(ctx context.Context, cmd core.Command) (core.Reply, err
 	}
 
 	if cmd.Kind == core.CommandHelp || cmd.Kind == core.CommandUnknown {
-		return core.Reply{Kind: core.ReplyHelp}, nil
+		return core.Reply{Kind: core.ReplyHelp, League: league}, nil
 	}
 
 	sub, err := s.store.EnsureSubscriber(ctx, cmd.ChatID)
@@ -51,12 +62,36 @@ func (s *Service) Handle(ctx context.Context, cmd core.Command) (core.Reply, err
 		}
 		return core.Reply{Kind: core.ReplyWelcome, League: league, Teams: options}, nil
 
+	case core.CommandMenu:
+		return s.menu(ctx, sub, league)
+
 	case core.CommandTeams:
 		options, err := s.options(ctx, sub.ID, league)
 		if err != nil {
 			return core.Reply{}, err
 		}
 		return core.Reply{Kind: core.ReplyTeams, League: league, Teams: options}, nil
+
+	case core.CommandStandings:
+		if s.standings == nil {
+			return core.Reply{Kind: core.ReplyStandings, League: league}, nil
+		}
+		table, err := s.standings.Standings(ctx, league)
+		if err != nil {
+			return core.Reply{}, fmt.Errorf("standings: %w", err)
+		}
+		followed, err := s.followed(ctx, sub.ID, league)
+		if err != nil {
+			return core.Reply{}, err
+		}
+		return core.Reply{Kind: core.ReplyStandings, League: league, Standings: table, Followed: followed}, nil
+
+	case core.CommandToggleAlerts:
+		if err := s.store.SetAlerts(ctx, sub.ID, !sub.AlertsOn); err != nil {
+			return core.Reply{}, fmt.Errorf("set alerts: %w", err)
+		}
+		sub.AlertsOn = !sub.AlertsOn
+		return s.menu(ctx, sub, league)
 
 	case core.CommandToggleTeam:
 		return s.toggle(ctx, sub.ID, league, cmd.Team)
@@ -75,6 +110,35 @@ func (s *Service) Handle(ctx context.Context, cmd core.Command) (core.Reply, err
 	}
 
 	return core.Reply{Kind: core.ReplyHelp}, nil
+}
+
+func (s *Service) menu(ctx context.Context, sub core.Subscriber, league core.League) (core.Reply, error) {
+	followed, err := s.followed(ctx, sub.ID, league)
+	if err != nil {
+		return core.Reply{}, err
+	}
+	return core.Reply{
+		Kind:     core.ReplyMenu,
+		League:   league,
+		Enabled:  sub.AlertsOn,
+		Followed: followed,
+	}, nil
+}
+
+func (s *Service) followed(ctx context.Context, id core.SubscriberID, league core.League) ([]core.TeamCode, error) {
+	current, err := s.store.SubscriptionsOf(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("subscriptions: %w", err)
+	}
+
+	var out []core.TeamCode
+	for _, sub := range current {
+		if sub.League == league {
+			out = append(out, sub.Team)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 func (s *Service) toggle(ctx context.Context, id core.SubscriberID, league core.League, code core.TeamCode) (core.Reply, error) {

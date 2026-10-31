@@ -29,12 +29,24 @@ func (c *Client) SendEvent(ctx context.Context, chatID int64, event core.Event) 
 }
 
 func (c *Client) SendDigest(ctx context.Context, chatID int64, digest core.Digest) error {
-	for _, part := range DigestParts(digest) {
-		if err := c.SendMessage(ctx, chatID, part, nil); err != nil {
+	parts := DigestParts(digest)
+	for i, part := range parts {
+		var kb *keyboard
+		if i == len(parts)-1 {
+			kb = digestFooter()
+		}
+		if err := c.SendMessage(ctx, chatID, part, kb); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func digestFooter() *keyboard {
+	return &keyboard{Rows: [][]button{{
+		{Text: "Таблица", Data: standingsData},
+		{Text: "Меню", Data: menuData},
+	}}}
 }
 
 const maxMessageBytes = 4000

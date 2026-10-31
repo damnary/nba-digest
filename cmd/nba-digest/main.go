@@ -98,8 +98,17 @@ func run() error {
 	}
 
 	bot := telegram.NewClient(cfg.TelegramToken)
+	if err := bot.PublishCommands(ctx); err != nil {
+		log.Warn("could not publish the command list", "err", err)
+	}
+
 	bus := inmem.New(inmem.DefaultBuffer)
-	service := subscription.New(store, cfg.League)
+
+	var standings core.StandingsProvider
+	if sp, ok := provider.(core.StandingsProvider); ok {
+		standings = sp
+	}
+	service := subscription.New(store, cfg.League, subscription.WithStandings(standings))
 
 	poller := live.NewPoller(provider, store, bus, live.Config{League: cfg.League}, live.WithLogger(log))
 	dispatcher := alerts.New(store, bot, bus,

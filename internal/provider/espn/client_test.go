@@ -37,6 +37,9 @@ func fixtureServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/site/wnba/summary", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "summary.json")
 	})
+	mux.HandleFunc("/standings/wnba/standings", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "standings.json")
+	})
 	mux.HandleFunc("/core/wnba/events/", func(w http.ResponseWriter, r *http.Request) {
 		page := r.URL.Query().Get("page")
 		if page == "" || page == "1" {
@@ -56,6 +59,7 @@ func newClient(t *testing.T) *Client {
 	srv := fixtureServer(t)
 	return New(
 		WithBaseURLs(srv.URL+"/site", srv.URL+"/core"),
+		WithStandingsBaseURL(srv.URL+"/standings"),
 		WithClock(func() time.Time { return observedAt }),
 	)
 }
@@ -233,5 +237,37 @@ func TestRealFeedRunsThroughTheDetector(t *testing.T) {
 	stats := live.Aggregate(box, feed.Plays)
 	if len(stats.Lines) != len(box.Lines) {
 		t.Errorf("aggregate changed the roster size: %d vs %d", len(stats.Lines), len(box.Lines))
+	}
+}
+
+func TestStandingsComeBackSeeded(t *testing.T) {
+	client := newClient(t)
+
+	table, err := client.Standings(t.Context(), core.LeagueWNBA)
+	if err != nil {
+		t.Fatalf("standings: %v", err)
+	}
+	if len(table.Conferences) != 2 {
+		t.Fatalf("want two conferences, got %d", len(table.Conferences))
+	}
+
+	for _, conf := range table.Conferences {
+		if conf.Name == "" {
+			t.Error("a conference without a name cannot be rendered")
+		}
+		if len(conf.Teams) != 15 {
+			t.Fatalf("%s: want 15 teams, got %d", conf.Name, len(conf.Teams))
+		}
+		for i, team := range conf.Teams {
+			if team.Seed != i+1 {
+				t.Fatalf("%s: team %d has seed %d, the table must arrive sorted", conf.Name, i, team.Seed)
+			}
+			if team.Team.Code == "" || team.Team.Name == "" {
+				t.Errorf("%s: incomplete team at seed %d: %+v", conf.Name, team.Seed, team.Team)
+			}
+			if team.Wins == 0 && team.Losses == 0 {
+				t.Errorf("%s: seed %d has no record at all", conf.Name, team.Seed)
+			}
+		}
 	}
 }

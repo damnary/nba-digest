@@ -20,6 +20,10 @@ type ScoreProvider interface {
 	BoxScore(ctx context.Context, game Game) (GameStats, error)
 }
 
+type StandingsProvider interface {
+	Standings(ctx context.Context, league League) (Standings, error)
+}
+
 type CommandHandler func(ctx context.Context, cmd Command) (Reply, error)
 
 type UpdateSource interface {

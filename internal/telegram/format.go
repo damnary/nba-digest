@@ -21,10 +21,36 @@ type keyboard struct {
 func render(reply core.Reply) (string, *keyboard) {
 	text := replyText(reply)
 
+	switch reply.Kind {
+	case core.ReplyMenu, core.ReplyAlerts, core.ReplyHelp:
+		return text, mainMenu(reply)
+	case core.ReplyStandings:
+		return text, backOnly()
+	}
+
 	if len(reply.Teams) == 0 {
 		return text, nil
 	}
 	return text, teamKeyboard(reply.Teams)
+}
+
+func mainMenu(reply core.Reply) *keyboard {
+	alerts := "Уведомления: выкл"
+	if reply.Enabled {
+		alerts = "Уведомления: вкл"
+	}
+
+	return &keyboard{Rows: [][]button{
+		{
+			{Text: "Мои команды", Data: teamsData},
+			{Text: "Таблица", Data: standingsData},
+		},
+		{{Text: alerts, Data: alertsData}},
+	}}
+}
+
+func backOnly() *keyboard {
+	return &keyboard{Rows: [][]button{{{Text: "‹ Назад", Data: menuData}}}}
 }
 
 func replyText(reply core.Reply) string {
@@ -33,6 +59,12 @@ func replyText(reply core.Reply) string {
 		return fmt.Sprintf("<b>Дайджест матчей %s</b>\n\n", reply.League.Title()) +
 			"Каждое утро присылаю итоги ночных матчей: счёт, лучшие игроки, кто вытащил концовку.\n\n" +
 			"Выбери команды, за которыми следишь:"
+
+	case core.ReplyMenu:
+		return "<b>Что показать?</b>\n\n" + followedLine(reply)
+
+	case core.ReplyStandings:
+		return standingsText(reply)
 
 	case core.ReplyTeams:
 		return selectionSummary(reply) + "\n\nНажми на команду, чтобы добавить или убрать её:"
@@ -59,11 +91,49 @@ func replyText(reply core.Reply) string {
 
 	default:
 		return "<b>Что я умею</b>\n\n" +
-			"/teams — выбрать команды\n" +
-			"/alerts on — писать ночью о концовках на волоске, по умолчанию выключено\n" +
-			"/alerts off — выключить их обратно\n" +
-			"/stop — отписаться от всего"
+			"Каждое утро присылаю итоги ночных матчей. " +
+			"Всё остальное — кнопками ниже.\n\n" +
+			"Отписаться от всего — /stop"
 	}
+}
+
+func followedLine(reply core.Reply) string {
+	if len(reply.Followed) == 0 {
+		return "Ты пока не следишь ни за одной командой."
+	}
+
+	codes := make([]string, len(reply.Followed))
+	for i, c := range reply.Followed {
+		codes[i] = esc(string(c))
+	}
+	return "Твои команды: " + strings.Join(codes, ", ")
+}
+
+func standingsText(reply core.Reply) string {
+	if reply.Standings.IsEmpty() {
+		return "<b>Таблица</b>\n\nСейчас таблица недоступна, попробуй позже."
+	}
+
+	followed := make(map[core.TeamCode]bool, len(reply.Followed))
+	for _, c := range reply.Followed {
+		followed[c] = true
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "<b>Таблица %s</b>", reply.League.Title())
+
+	for _, conf := range reply.Standings.Conferences {
+		fmt.Fprintf(&b, "\n\n<blockquote expandable><b>%s</b>\n", esc(conf.Name))
+		for _, t := range conf.Teams {
+			line := fmt.Sprintf("<code>%2d %-4s %2d-%d</code>", t.Seed, esc(string(t.Team.Code)), t.Wins, t.Losses)
+			if followed[t.Team.Code] {
+				line = "<b>" + line + "</b>"
+			}
+			fmt.Fprintf(&b, "\n%s%s", withSpace(icon(t.Team)), line)
+		}
+		b.WriteString("</blockquote>")
+	}
+	return b.String()
 }
 
 func selectionSummary(reply core.Reply) string {

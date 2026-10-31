@@ -15,17 +15,19 @@ import (
 )
 
 const (
-	defaultSiteBase = "https://site.api.espn.com/apis/site/v2/sports/basketball"
-	defaultCoreBase = "https://sports.core.api.espn.com/v2/sports/basketball/leagues"
-	defaultPageSize = 100
+	defaultStandingsBase = "https://site.api.espn.com/apis/v2/sports/basketball"
+	defaultSiteBase      = "https://site.api.espn.com/apis/site/v2/sports/basketball"
+	defaultCoreBase      = "https://sports.core.api.espn.com/v2/sports/basketball/leagues"
+	defaultPageSize      = 100
 )
 
 type Client struct {
-	http     *http.Client
-	siteBase string
-	coreBase string
-	pageSize int
-	now      func() time.Time
+	http          *http.Client
+	siteBase      string
+	coreBase      string
+	standingsBase string
+	pageSize      int
+	now           func() time.Time
 
 	mu    sync.Mutex
 	codes map[core.League]map[string]core.TeamCode
@@ -44,6 +46,10 @@ func WithBaseURLs(site, core string) Option {
 	}
 }
 
+func WithStandingsBaseURL(base string) Option {
+	return func(cl *Client) { cl.standingsBase = base }
+}
+
 func WithPageSize(n int) Option {
 	return func(cl *Client) { cl.pageSize = n }
 }
@@ -58,11 +64,12 @@ func New(opts ...Option) *Client {
 			Timeout:   15 * time.Second,
 			Transport: &retry.Transport{Policy: retry.Default},
 		},
-		siteBase: defaultSiteBase,
-		coreBase: defaultCoreBase,
-		pageSize: defaultPageSize,
-		now:      time.Now,
-		codes:    make(map[core.League]map[string]core.TeamCode),
+		siteBase:      defaultSiteBase,
+		coreBase:      defaultCoreBase,
+		standingsBase: defaultStandingsBase,
+		pageSize:      defaultPageSize,
+		now:           time.Now,
+		codes:         make(map[core.League]map[string]core.TeamCode),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -85,6 +92,20 @@ func (c *Client) Teams(ctx context.Context, league core.League) ([]core.External
 	}
 	c.cacheCodes(league, teams)
 	return teams, nil
+}
+
+func (c *Client) Standings(ctx context.Context, league core.League) (core.Standings, error) {
+	var resp standingsResponse
+	u := fmt.Sprintf("%s/%s/standings", c.standingsBase, league)
+	if err := c.getJSON(ctx, u, &resp); err != nil {
+		return core.Standings{}, fmt.Errorf("espn standings: %w", err)
+	}
+
+	standings := mapStandings(league, resp)
+	if standings.IsEmpty() {
+		return core.Standings{}, fmt.Errorf("espn standings: empty table for %s", league)
+	}
+	return standings, nil
 }
 
 func (c *Client) Games(ctx context.Context, league core.League, day core.Day) ([]core.Game, error) {

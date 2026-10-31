@@ -1,8 +1,10 @@
 package espn
 
 import (
+	"cmp"
 	"fmt"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -223,4 +225,44 @@ func statValue(stats []string, idx map[string]int, name string) int {
 		return 0
 	}
 	return v
+}
+
+func mapStandings(league core.League, resp standingsResponse) core.Standings {
+	out := core.Standings{League: league}
+
+	for _, child := range resp.Children {
+		conf := core.Conference{Name: child.Name}
+		for _, entry := range child.Standings.Entries {
+			if entry.Team.Abbreviation == "" {
+				continue
+			}
+
+			standing := core.TeamStanding{
+				Team: core.Team{
+					League: league,
+					Code:   core.TeamCode(entry.Team.Abbreviation),
+					Name:   entry.Team.DisplayName,
+				},
+			}
+			for _, stat := range entry.Stats {
+				switch stat.Name {
+				case "wins":
+					standing.Wins = int(stat.Value)
+				case "losses":
+					standing.Losses = int(stat.Value)
+				case "playoffSeed":
+					standing.Seed = int(stat.Value)
+				case "streak":
+					standing.Streak = stat.DisplayValue
+				}
+			}
+			conf.Teams = append(conf.Teams, standing)
+		}
+
+		slices.SortStableFunc(conf.Teams, func(a, b core.TeamStanding) int {
+			return cmp.Compare(a.Seed, b.Seed)
+		})
+		out.Conferences = append(out.Conferences, conf)
+	}
+	return out
 }

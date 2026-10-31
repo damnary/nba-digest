@@ -96,3 +96,23 @@ type summaryResponse struct {
 		} `json:"players"`
 	} `json:"boxscore"`
 }
+
+type standingsResponse struct {
+	Children []struct {
+		Name      string `json:"name"`
+		Standings struct {
+			Entries []struct {
+				Team struct {
+					ID           string `json:"id"`
+					Abbreviation string `json:"abbreviation"`
+					DisplayName  string `json:"displayName"`
+				} `json:"team"`
+				Stats []struct {
+					Name         string  `json:"name"`
+					Value        float64 `json:"value"`
+					DisplayValue string  `json:"displayValue"`
+				} `json:"stats"`
+			} `json:"entries"`
+		} `json:"standings"`
+	} `json:"children"`
+}

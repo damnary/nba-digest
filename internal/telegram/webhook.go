@@ -88,6 +88,10 @@ type replier struct {
 
 func (r *replier) dispatch(ctx context.Context, handle core.CommandHandler, update Update) {
 	in := parseUpdate(update)
+	if in.foreignChat != 0 {
+		r.log.Info("ignoring a chat that is not a private conversation", "chat", in.foreignChat)
+		return
+	}
 	if !in.valid {
 		return
 	}

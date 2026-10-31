@@ -149,6 +149,21 @@ func iconsWereRejected(err error, text string) bool {
 		errors.As(err, &apiErr) && apiErr.Code == http.StatusBadRequest
 }
 
+type botCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+func (c *Client) PublishCommands(ctx context.Context) error {
+	commands := []botCommand{
+		{Command: "menu", Description: "Меню"},
+		{Command: "teams", Description: "Мои команды"},
+		{Command: "standings", Description: "Таблица"},
+		{Command: "stop", Description: "Отписаться от всего"},
+	}
+	return c.call(ctx, "setMyCommands", map[string]any{"commands": commands}, nil)
+}
+
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, kb *keyboard) error {
 	if err := c.waitForChat(ctx, chatID); err != nil {
 		return err

@@ -3,13 +3,16 @@ package core
 type CommandKind string
 
 const (
-	CommandStart      CommandKind = "start"
-	CommandHelp       CommandKind = "help"
-	CommandTeams      CommandKind = "teams"
-	CommandToggleTeam CommandKind = "toggle_team"
-	CommandAlerts     CommandKind = "alerts"
-	CommandStop       CommandKind = "stop"
-	CommandUnknown    CommandKind = "unknown"
+	CommandStart        CommandKind = "start"
+	CommandHelp         CommandKind = "help"
+	CommandMenu         CommandKind = "menu"
+	CommandTeams        CommandKind = "teams"
+	CommandToggleTeam   CommandKind = "toggle_team"
+	CommandStandings    CommandKind = "standings"
+	CommandAlerts       CommandKind = "alerts"
+	CommandToggleAlerts CommandKind = "toggle_alerts"
+	CommandStop         CommandKind = "stop"
+	CommandUnknown      CommandKind = "unknown"
 )
 
 type Command struct {
@@ -24,6 +27,8 @@ type ReplyKind string
 
 const (
 	ReplyWelcome     ReplyKind = "welcome"
+	ReplyMenu        ReplyKind = "menu"
+	ReplyStandings   ReplyKind = "standings"
 	ReplyTeams       ReplyKind = "teams"
 	ReplyTeamAdded   ReplyKind = "team_added"
 	ReplyTeamRemoved ReplyKind = "team_removed"
@@ -39,11 +44,13 @@ type TeamOption struct {
 }
 
 type Reply struct {
-	Kind    ReplyKind
-	League  League
-	Teams   []TeamOption
-	Team    Team
-	Enabled bool
+	Kind      ReplyKind
+	League    League
+	Teams     []TeamOption
+	Team      Team
+	Enabled   bool
+	Standings Standings
+	Followed  []TeamCode
 }
 
 func (r Reply) Selected() []Team {

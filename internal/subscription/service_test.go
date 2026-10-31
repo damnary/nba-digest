@@ -41,7 +41,7 @@ func (f *fakeStore) EnsureSubscriber(_ context.Context, chatID int64) (core.Subs
 		f.nextID++
 		id = f.nextID
 		f.chats[chatID] = id
-		f.alerts[id] = true
+		f.alerts[id] = false
 	}
 	return core.Subscriber{ID: id, ChatID: chatID, AlertsOn: f.alerts[id]}, nil
 }
@@ -277,5 +277,87 @@ func TestStoreFailureIsWrapped(t *testing.T) {
 
 	if _, err := svc.Handle(t.Context(), core.Command{ChatID: 1, Kind: core.CommandStart}); err == nil {
 		t.Fatal("want an error when the store fails")
+	}
+}
+
+type fakeStandings struct {
+	table core.Standings
+	err   error
+	calls int
+}
+
+func (f *fakeStandings) Standings(context.Context, core.League) (core.Standings, error) {
+	f.calls++
+	return f.table, f.err
+}
+
+func testStandings() core.Standings {
+	return core.Standings{
+		League: core.LeagueWNBA,
+		Conferences: []core.Conference{{
+			Name: "Eastern Conference",
+			Teams: []core.TeamStanding{
+				{Team: core.Team{League: core.LeagueWNBA, Code: "NYL", Name: "New York Liberty"}, Seed: 1, Wins: 5, Losses: 1},
+				{Team: core.Team{League: core.LeagueWNBA, Code: "SEA", Name: "Seattle Storm"}, Seed: 2, Wins: 3, Losses: 3},
+			},
+		}},
+	}
+}
+
+func TestStandingsMarkTheTeamsYouFollow(t *testing.T) {
+	store := newFakeStore()
+	svc := New(store, core.LeagueWNBA, WithStandings(&fakeStandings{table: testStandings()}))
+	ctx := t.Context()
+
+	if _, err := svc.Handle(ctx, core.Command{ChatID: 1, Kind: core.CommandToggleTeam, Team: "NYL"}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	reply, err := svc.Handle(ctx, core.Command{ChatID: 1, Kind: core.CommandStandings})
+	if err != nil {
+		t.Fatalf("standings: %v", err)
+	}
+	if reply.Kind != core.ReplyStandings {
+		t.Fatalf("kind = %s", reply.Kind)
+	}
+	if len(reply.Followed) != 1 || reply.Followed[0] != "NYL" {
+		t.Errorf("the table should know which teams are yours, got %v", reply.Followed)
+	}
+}
+
+func TestStandingsStayUsableWithoutAProvider(t *testing.T) {
+	svc, _ := newService(t)
+
+	reply, err := svc.Handle(t.Context(), core.Command{ChatID: 1, Kind: core.CommandStandings})
+	if err != nil {
+		t.Fatalf("a missing provider must not break the bot: %v", err)
+	}
+	if reply.Kind != core.ReplyStandings || !reply.Standings.IsEmpty() {
+		t.Errorf("want an empty table, got %+v", reply)
+	}
+}
+
+func TestMenuTogglesAlertsAndComesBack(t *testing.T) {
+	store := newFakeStore()
+	svc := New(store, core.LeagueWNBA)
+	ctx := t.Context()
+
+	first, err := svc.Handle(ctx, core.Command{ChatID: 1, Kind: core.CommandToggleAlerts})
+	if err != nil {
+		t.Fatalf("toggle: %v", err)
+	}
+	if first.Kind != core.ReplyMenu {
+		t.Fatalf("a toggle from the menu must land back on the menu, got %s", first.Kind)
+	}
+	if !first.Enabled {
+		t.Error("alerts should now be on")
+	}
+
+	second, err := svc.Handle(ctx, core.Command{ChatID: 1, Kind: core.CommandToggleAlerts})
+	if err != nil {
+		t.Fatalf("second toggle: %v", err)
+	}
+	if second.Enabled {
+		t.Error("the second press should switch them back off")
 	}
 }
