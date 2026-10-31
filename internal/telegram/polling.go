@@ -10,7 +10,16 @@ import (
 
 const pollTimeout = 25 * time.Second
 
+type Metrics interface {
+	UpdatesReceived()
+}
+
+type noMetrics struct{}
+
+func (noMetrics) UpdatesReceived() {}
+
 type Poller struct {
+	metrics Metrics
 	client  *Client
 	handle  core.CommandHandler
 	log     *slog.Logger
@@ -19,6 +28,14 @@ type Poller struct {
 }
 
 type PollerOption func(*Poller)
+
+func WithPollerMetrics(m Metrics) PollerOption {
+	return func(p *Poller) {
+		if m != nil {
+			p.metrics = m
+		}
+	}
+}
 
 func WithPollerLogger(l *slog.Logger) PollerOption {
 	return func(p *Poller) {
@@ -33,6 +50,7 @@ func NewPoller(client *Client, handle core.CommandHandler, opts ...PollerOption)
 		handle:  handle,
 		log:     slog.Default(),
 		replies: &replier{client: client, log: slog.Default()},
+		metrics: noMetrics{},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -51,6 +69,9 @@ func (p *Poller) Run(ctx context.Context) error {
 		}
 
 		updates, err := p.client.GetUpdates(ctx, p.offset, pollTimeout)
+		if err == nil {
+			p.metrics.UpdatesReceived()
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil

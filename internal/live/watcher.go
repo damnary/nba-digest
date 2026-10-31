@@ -79,6 +79,7 @@ func (w *watcher) poll(ctx context.Context) error {
 		if !fresh[event.ID] {
 			continue
 		}
+		w.poller.metrics.EventDetected(string(event.Kind))
 		if err := w.poller.publisher.Publish(ctx, event); err != nil {
 			return fmt.Errorf("publish %s: %w", event.ID, err)
 		}

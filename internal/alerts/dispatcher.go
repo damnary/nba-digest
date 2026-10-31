@@ -27,7 +27,16 @@ type Consumer interface {
 	Consume(ctx context.Context, handle func(context.Context, core.Event) error) error
 }
 
+type Metrics interface {
+	Delivered(channel, result string)
+}
+
+type noMetrics struct{}
+
+func (noMetrics) Delivered(string, string) {}
+
 type Dispatcher struct {
+	metrics    Metrics
 	store      Store
 	sender     Sender
 	consumer   Consumer
@@ -41,6 +50,14 @@ type Option func(*Dispatcher)
 
 func WithLogger(l *slog.Logger) Option {
 	return func(d *Dispatcher) { d.log = l }
+}
+
+func WithMetrics(m Metrics) Option {
+	return func(d *Dispatcher) {
+		if m != nil {
+			d.metrics = m
+		}
+	}
 }
 
 func WithClock(now func() time.Time) Option {
@@ -64,6 +81,7 @@ func New(store Store, sender Sender, consumer Consumer, opts ...Option) *Dispatc
 		now:        time.Now,
 		retryEvery: time.Minute,
 		drainGrace: 30 * time.Second,
+		metrics:    noMetrics{},
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -199,6 +217,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event core.Event) error {
 }
 
 func (d *Dispatcher) mark(ctx context.Context, id core.SubscriberID, event core.EventID, status core.DeliveryStatus) {
+	d.metrics.Delivered("alert", string(status))
 	if err := d.store.MarkDelivery(ctx, id, event, status); err != nil {
 		d.log.Error("could not record delivery", "subscriber", id, "event", event, "err", err)
 	}

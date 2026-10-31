@@ -14,6 +14,7 @@ type Config struct {
 	Addr          string
 	WebhookPath   string
 	Webhook       http.Handler
+	Metrics       http.Handler
 	Ready         Check
 	ShutdownGrace time.Duration
 }
@@ -43,6 +44,10 @@ func New(cfg Config, opts ...Option) *Server {
 		writePlain(w, http.StatusOK, "ok")
 	})
 	mux.HandleFunc("GET /readyz", s.handleReady)
+
+	if cfg.Metrics != nil {
+		mux.Handle("GET /metrics", cfg.Metrics)
+	}
 
 	if cfg.Webhook != nil && cfg.WebhookPath != "" {
 		mux.Handle("POST "+cfg.WebhookPath, cfg.Webhook)

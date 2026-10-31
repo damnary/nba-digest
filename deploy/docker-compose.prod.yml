@@ -36,6 +36,8 @@ services:
       LEAGUE: ${LEAGUE:-nba}
       DIGEST_AT: ${DIGEST_AT:-10:00}
       DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Europe/Moscow}
+      OPS_CHAT_ID: ${OPS_CHAT_ID:-}
+      OPS_REPORT_AT: ${OPS_REPORT_AT:-11:00}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       test: ["CMD", "/nba-digest", "healthcheck"]

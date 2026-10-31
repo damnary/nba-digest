@@ -17,9 +17,11 @@ import (
 	"github.com/damnary/nba-digest/internal/core"
 	"github.com/damnary/nba-digest/internal/digest"
 	"github.com/damnary/nba-digest/internal/eventbus/inmem"
+	"github.com/damnary/nba-digest/internal/heartbeat"
 	"github.com/damnary/nba-digest/internal/httpapi"
 	"github.com/damnary/nba-digest/internal/live"
 	"github.com/damnary/nba-digest/internal/platform/config"
+	"github.com/damnary/nba-digest/internal/platform/metrics"
 	"github.com/damnary/nba-digest/internal/provider/espn"
 	"github.com/damnary/nba-digest/internal/provider/replay"
 	"github.com/damnary/nba-digest/internal/storage/postgres"
@@ -28,6 +30,8 @@ import (
 )
 
 const webhookPath = "/tg/hook"
+
+var version = "dev"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
@@ -84,7 +88,9 @@ func run() error {
 	}
 	log.Info("database ready")
 
-	provider, err := newProvider(cfg)
+	recorder := metrics.New(version)
+
+	provider, err := newProvider(cfg, recorder)
 	if err != nil {
 		return err
 	}
@@ -97,7 +103,8 @@ func run() error {
 		log.Warn("team sync failed, using the stored roster", "err", err, "teams", len(stored))
 	}
 
-	bot := telegram.NewClient(cfg.TelegramToken)
+	bot := telegram.NewClient(cfg.TelegramToken,
+		telegram.WithTransport(&metrics.Transport{Metrics: recorder}))
 	if err := bot.PublishCommands(ctx); err != nil {
 		log.Warn("could not publish the command list", "err", err)
 	}
@@ -110,18 +117,24 @@ func run() error {
 	}
 	service := subscription.New(store, cfg.League, subscription.WithStandings(standings))
 
-	poller := live.NewPoller(provider, store, bus, live.Config{League: cfg.League}, live.WithLogger(log))
+	poller := live.NewPoller(provider, store, bus, live.Config{League: cfg.League},
+		live.WithLogger(log),
+		live.WithMetrics(recorder))
 	dispatcher := alerts.New(store, bot, bus,
 		alerts.WithLogger(log),
+		alerts.WithMetrics(recorder),
 		alerts.WithDrainGrace(cfg.ShutdownGrace))
-	scheduler := digest.New(store, bot, cfg.League, digest.WithLogger(log))
+	scheduler := digest.New(store, bot, cfg.League,
+		digest.WithLogger(log),
+		digest.WithMetrics(recorder))
 
-	updates, webhook := newUpdateSource(cfg, bot, service.Handle, log)
+	updates, webhook := newUpdateSource(cfg, bot, service.Handle, log, recorder)
 
 	server := httpapi.New(httpapi.Config{
 		Addr:          cfg.HTTPAddr,
 		WebhookPath:   webhookPath,
 		Webhook:       webhook,
+		Metrics:       recorder.Handler(),
 		Ready:         store.Ping,
 		ShutdownGrace: cfg.ShutdownGrace,
 	}, httpapi.WithLogger(log))
@@ -132,6 +145,16 @@ func run() error {
 	g.Go(supervise(gctx, "telegram", updates.Run))
 	g.Go(supervise(gctx, "digest scheduler", scheduler.Run))
 	g.Go(supervise(gctx, "alerts dispatcher", dispatcher.Run))
+	if cfg.ReportsToOps() {
+		loc, err := time.LoadLocation(cfg.DefaultTZ)
+		if err != nil {
+			return err
+		}
+		reporter := heartbeat.New(recorder, bot, cfg.OpsChatID, cfg.OpsReportAt, loc,
+			heartbeat.WithLogger(log))
+		g.Go(supervise(gctx, "ops reporter", reporter.Run))
+	}
+
 	g.Go(supervise(gctx, "live poller", func(ctx context.Context) error {
 		defer bus.Close()
 		return poller.Run(ctx)
@@ -140,7 +163,8 @@ func run() error {
 	log.Info("nba-digest started",
 		"league", cfg.League,
 		"provider", provider.Name(),
-		"webhook", cfg.UsesWebhook())
+		"webhook", cfg.UsesWebhook(),
+		"ops_report", cfg.ReportsToOps())
 
 	if err := g.Wait(); err != nil {
 		return err
@@ -159,16 +183,18 @@ func supervise(ctx context.Context, name string, run func(context.Context) error
 	}
 }
 
-func newProvider(cfg config.Config) (core.ScoreProvider, error) {
+func newProvider(cfg config.Config, recorder *metrics.Metrics) (core.ScoreProvider, error) {
 	if !cfg.UsesReplay() {
-		return espn.New(), nil
+		return espn.New(espn.WithTransport(&metrics.Transport{Metrics: recorder})), nil
 	}
 	return replay.New(os.DirFS(cfg.ReplayDir), cfg.ReplaySpeed)
 }
 
-func newUpdateSource(cfg config.Config, bot *telegram.Client, handle core.CommandHandler, log *slog.Logger) (core.UpdateSource, *telegram.Webhook) {
+func newUpdateSource(cfg config.Config, bot *telegram.Client, handle core.CommandHandler, log *slog.Logger, m telegram.Metrics) (core.UpdateSource, *telegram.Webhook) {
 	if !cfg.UsesWebhook() {
-		return telegram.NewPoller(bot, handle, telegram.WithPollerLogger(log)), nil
+		return telegram.NewPoller(bot, handle,
+			telegram.WithPollerLogger(log),
+			telegram.WithPollerMetrics(m)), nil
 	}
 
 	hook := telegram.NewWebhook(bot, handle,

@@ -58,6 +58,10 @@ func WithClock(now func() time.Time) Option {
 	return func(cl *Client) { cl.now = now }
 }
 
+func WithTransport(rt http.RoundTripper) Option {
+	return func(cl *Client) { cl.http.Transport = &retry.Transport{Next: rt, Policy: retry.Default} }
+}
+
 func New(opts ...Option) *Client {
 	c := &Client{
 		http: &http.Client{

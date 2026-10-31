@@ -23,7 +23,16 @@ type Sender interface {
 	SendDigest(ctx context.Context, chatID int64, digest core.Digest) error
 }
 
+type Metrics interface {
+	Delivered(channel, result string)
+}
+
+type noMetrics struct{}
+
+func (noMetrics) Delivered(string, string) {}
+
 type Scheduler struct {
+	metrics  Metrics
 	store    Store
 	sender   Sender
 	league   core.League
@@ -36,6 +45,14 @@ type Option func(*Scheduler)
 
 func WithLogger(l *slog.Logger) Option {
 	return func(s *Scheduler) { s.log = l }
+}
+
+func WithMetrics(m Metrics) Option {
+	return func(s *Scheduler) {
+		if m != nil {
+			s.metrics = m
+		}
+	}
 }
 
 func WithClock(now func() time.Time) Option {
@@ -54,6 +71,7 @@ func New(store Store, sender Sender, league core.League, opts ...Option) *Schedu
 		interval: time.Minute,
 		log:      slog.Default(),
 		now:      time.Now,
+		metrics:  noMetrics{},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -141,13 +159,19 @@ func (s *Scheduler) deliver(ctx context.Context, sub core.Subscriber, occurrence
 	built := Build(sub, subscriptions, games, stats, day)
 
 	sent := false
+	if built.IsEmpty() {
+		s.metrics.Delivered("digest", "empty")
+	}
 	if !built.IsEmpty() {
 		switch err := s.sender.SendDigest(ctx, sub.ChatID, built); {
 		case err == nil:
 			sent = true
+			s.metrics.Delivered("digest", "sent")
 		case errors.Is(err, core.ErrRecipientUnreachable):
+			s.metrics.Delivered("digest", "unreachable")
 			s.log.Info("subscriber is unreachable, closing the day", "subscriber", sub.ID, "err", err)
 		default:
+			s.metrics.Delivered("digest", "failed")
 			return fmt.Errorf("send: %w", err)
 		}
 	}

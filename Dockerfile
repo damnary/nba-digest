@@ -9,8 +9,9 @@ COPY . .
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/nba-digest ./cmd/nba-digest
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/nba-digest ./cmd/nba-digest
 
 FROM scratch
 

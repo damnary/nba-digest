@@ -5,6 +5,8 @@ TELEGRAM_WEBHOOK_SECRET: at-least-sixteen-characters
 HTTP_ADDR: ":8080"
 LEAGUE: nba
 DIGEST_AT: "10:00"
+OPS_CHAT_ID: ""
+OPS_REPORT_AT: "11:00"
 DEFAULT_TIMEZONE: Europe/Moscow
 LOG_LEVEL: info
 REPLAY_DIR: ""

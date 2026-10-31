@@ -46,6 +46,10 @@ func WithHTTPClient(c *http.Client) ClientOption {
 	return func(cl *Client) { cl.http = c }
 }
 
+func WithTransport(rt http.RoundTripper) ClientOption {
+	return func(c *Client) { c.http.Transport = rt }
+}
+
 func WithBaseURL(base string) ClientOption {
 	return func(cl *Client) { cl.base = base }
 }
@@ -162,6 +166,10 @@ func (c *Client) PublishCommands(ctx context.Context) error {
 		{Command: "stop", Description: "Отписаться от всего"},
 	}
 	return c.call(ctx, "setMyCommands", map[string]any{"commands": commands}, nil)
+}
+
+func (c *Client) SendNotice(ctx context.Context, chatID int64, text string) error {
+	return c.SendMessage(ctx, chatID, text, nil)
 }
 
 func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text string, kb *keyboard) error {

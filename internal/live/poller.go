@@ -43,7 +43,14 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
+type Metrics interface {
+	ScanSucceeded()
+	GamesWatched(n int)
+	EventDetected(kind string)
+}
+
 type Poller struct {
+	metrics    Metrics
 	provider   core.ScoreProvider
 	store      Store
 	publisher  Publisher
@@ -72,6 +79,7 @@ func NewPoller(provider core.ScoreProvider, store Store, publisher Publisher, cf
 		statsRetry: retry.Policy{Attempts: 3, Base: 2 * time.Second, Max: 20 * time.Second},
 		sem:        make(chan struct{}, cfg.MaxInflight),
 		watchers:   make(map[core.GameID]chan core.Game),
+		metrics:    noMetrics{},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -84,6 +92,20 @@ type PollerOption func(*Poller)
 func WithLogger(l *slog.Logger) PollerOption {
 	return func(p *Poller) { p.log = l }
 }
+
+func WithMetrics(m Metrics) PollerOption {
+	return func(p *Poller) {
+		if m != nil {
+			p.metrics = m
+		}
+	}
+}
+
+type noMetrics struct{}
+
+func (noMetrics) ScanSucceeded()       {}
+func (noMetrics) GamesWatched(int)     {}
+func (noMetrics) EventDetected(string) {}
 
 func WithClock(now func() time.Time) PollerOption {
 	return func(p *Poller) { p.now = now }
@@ -117,6 +139,8 @@ func (p *Poller) scan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	p.metrics.ScanSucceeded()
+
 	if len(games) == 0 {
 		return nil
 	}
@@ -128,6 +152,12 @@ func (p *Poller) scan(ctx context.Context) error {
 	for _, game := range games {
 		p.track(ctx, game)
 	}
+
+	p.mu.Lock()
+	watching := len(p.watchers)
+	p.mu.Unlock()
+	p.metrics.GamesWatched(watching)
+
 	return nil
 }
 

@@ -109,6 +109,18 @@ func followedLine(reply core.Reply) string {
 	return "Твои команды: " + strings.Join(codes, ", ")
 }
 
+var conferenceNames = map[string]string{
+	"Eastern Conference": "Восток",
+	"Western Conference": "Запад",
+}
+
+func conferenceName(raw string) string {
+	if ru, ok := conferenceNames[raw]; ok {
+		return ru
+	}
+	return raw
+}
+
 func standingsText(reply core.Reply) string {
 	if reply.Standings.IsEmpty() {
 		return "<b>Таблица</b>\n\nСейчас таблица недоступна, попробуй позже."
@@ -123,17 +135,54 @@ func standingsText(reply core.Reply) string {
 	fmt.Fprintf(&b, "<b>Таблица %s</b>", reply.League.Title())
 
 	for _, conf := range reply.Standings.Conferences {
-		fmt.Fprintf(&b, "\n\n<blockquote expandable><b>%s</b>\n", esc(conf.Name))
-		for _, t := range conf.Teams {
-			line := fmt.Sprintf("<code>%2d %-4s %2d-%d</code>", t.Seed, esc(string(t.Team.Code)), t.Wins, t.Losses)
-			if followed[t.Team.Code] {
-				line = "<b>" + line + "</b>"
+		fmt.Fprintf(&b, "\n\n<b>%s</b>\n<blockquote>", esc(conferenceName(conf.Name)))
+
+		for i, t := range conf.Teams {
+			if cut := cutLabel(reply.League, t.Seed); cut != "" && i > 0 {
+				fmt.Fprintf(&b, "\n<i>%s</i>", cut)
 			}
-			fmt.Fprintf(&b, "\n%s%s", withSpace(icon(t.Team)), line)
+
+			row := fmt.Sprintf("<code>%2d %-4s %2d-%-2d %3s</code>",
+				t.Seed, esc(string(t.Team.Code)), t.Wins, t.Losses, esc(streak(t.Streak)))
+			if followed[t.Team.Code] {
+				row = "<b>" + row + "</b>"
+			}
+
+			prefix := "\n"
+			if i == 0 {
+				prefix = ""
+			}
+			fmt.Fprintf(&b, "%s%s%s", prefix, withSpace(icon(t.Team)), row)
 		}
 		b.WriteString("</blockquote>")
 	}
 	return b.String()
+}
+
+func cutLabel(league core.League, seed int) string {
+	if league != core.LeagueNBA {
+		return ""
+	}
+	switch seed {
+	case 7:
+		return "плей-ин"
+	case 11:
+		return "вне зоны"
+	}
+	return ""
+}
+
+func streak(raw string) string {
+	if len(raw) < 2 {
+		return ""
+	}
+	switch raw[0] {
+	case 'W':
+		return "+" + raw[1:]
+	case 'L':
+		return "−" + raw[1:]
+	}
+	return ""
 }
 
 func selectionSummary(reply core.Reply) string {

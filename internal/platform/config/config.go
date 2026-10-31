@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ type Config struct {
 	ReplaySpeed   float64
 	DefaultTZ     string
 	DigestAt      core.DailyTime
+	OpsChatID     int64
+	OpsReportAt   core.DailyTime
 	ShutdownGrace time.Duration
 	LogLevel      string
 }
@@ -28,6 +31,8 @@ type Config struct {
 func (c Config) UsesWebhook() bool { return c.WebhookURL != "" }
 
 func (c Config) UsesReplay() bool { return c.ReplayDir != "" }
+
+func (c Config) ReportsToOps() bool { return c.OpsChatID != 0 }
 
 func Load() (Config, error) {
 	loadDotEnv(".env")
@@ -52,11 +57,25 @@ func Load() (Config, error) {
 	}
 	cfg.League = league
 
-	digestAt, err := core.ParseDailyTime(valueOr("DIGEST_AT", "08:00"))
+	digestAt, err := core.ParseDailyTime(valueOr("DIGEST_AT", "10:00"))
 	if err != nil {
 		problems = append(problems, err.Error())
 	}
 	cfg.DigestAt = digestAt
+
+	opsAt, err := core.ParseDailyTime(valueOr("OPS_REPORT_AT", "11:00"))
+	if err != nil {
+		problems = append(problems, err.Error())
+	}
+	cfg.OpsReportAt = opsAt
+
+	if raw := os.Getenv("OPS_CHAT_ID"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("OPS_CHAT_ID %q is not a number", raw))
+		}
+		cfg.OpsChatID = id
+	}
 
 	speed, err := floatOr("REPLAY_SPEED", 60)
 	if err != nil {
