@@ -3,6 +3,7 @@ package digest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -80,10 +81,14 @@ func (f *fakeStore) GameStats(context.Context, []core.GameID) (map[core.GameID]c
 type fakeSender struct {
 	digests []core.Digest
 	chats   []int64
+	err     error
 }
 
 func (s *fakeSender) SendDigest(_ context.Context, chatID int64, d core.Digest) error {
 	s.chats = append(s.chats, chatID)
+	if s.err != nil {
+		return s.err
+	}
 	s.digests = append(s.digests, d)
 	return nil
 }
@@ -341,5 +346,34 @@ func TestOvernightGamesArriveTheSameMorning(t *testing.T) {
 	want := core.Day{Year: 2026, Month: time.August, Day: 20}
 	if got := sender.digests[0].Day; got != want {
 		t.Errorf("digest labelled %s, want the US game date %s", got, want)
+	}
+}
+
+func TestABlockedSubscriberDoesNotJamTheDay(t *testing.T) {
+	loc := moscow(t)
+	store := newFakeStore()
+	store.subs = []core.Subscriber{{ID: 1, ChatID: 100, Timezone: loc, DigestAt: core.DailyTime{Hour: 8}}}
+	store.subsOf[1] = []core.Subscription{{SubscriberID: 1, League: core.LeagueWNBA, Team: "NYL"}}
+	store.games = []core.Game{finalGame("wnba:1", "NYL", "LVA", 88, 81)}
+
+	sender := &fakeSender{err: fmt.Errorf("telegram sendMessage: 403 Forbidden: bot was blocked by the user: %w", core.ErrRecipientUnreachable)}
+	s := newScheduler(store, sender)
+
+	morning := time.Date(2026, 8, 11, 5, 0, 0, 0, time.UTC)
+	if err := s.Tick(t.Context(), morning); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(sender.chats) != 1 {
+		t.Fatalf("want one attempt, got %d", len(sender.chats))
+	}
+	if len(store.marked) != 1 {
+		t.Fatalf("a user who blocked the bot still closes the day, got %+v", store.marked)
+	}
+
+	if err := s.Tick(t.Context(), morning.Add(time.Minute)); err != nil {
+		t.Fatalf("second tick: %v", err)
+	}
+	if len(sender.chats) != 1 {
+		t.Errorf("blocking is permanent: retrying every minute is wasted work, got %d attempts", len(sender.chats))
 	}
 }

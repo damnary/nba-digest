@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/damnary/nba-digest/internal/core"
 )
 
 const (
@@ -88,6 +90,20 @@ type apiError struct {
 
 func (e *apiError) Error() string {
 	return fmt.Sprintf("telegram %s: %d %s", e.Method, e.Code, e.Description)
+}
+
+func (e *apiError) Unwrap() error {
+	if e.recipientIsGone() {
+		return core.ErrRecipientUnreachable
+	}
+	return nil
+}
+
+func (e *apiError) recipientIsGone() bool {
+	if e.Code == http.StatusForbidden {
+		return true
+	}
+	return e.Code == http.StatusBadRequest && strings.Contains(e.Description, "chat not found")
 }
 
 type sendMessageRequest struct {

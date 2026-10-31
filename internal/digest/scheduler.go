@@ -2,6 +2,7 @@ package digest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -141,10 +142,14 @@ func (s *Scheduler) deliver(ctx context.Context, sub core.Subscriber, occurrence
 
 	sent := false
 	if !built.IsEmpty() {
-		if err := s.sender.SendDigest(ctx, sub.ChatID, built); err != nil {
+		switch err := s.sender.SendDigest(ctx, sub.ChatID, built); {
+		case err == nil:
+			sent = true
+		case errors.Is(err, core.ErrRecipientUnreachable):
+			s.log.Info("subscriber is unreachable, closing the day", "subscriber", sub.ID, "err", err)
+		default:
 			return fmt.Errorf("send: %w", err)
 		}
-		sent = true
 	}
 
 	if _, err := s.store.MarkDigestProcessed(ctx, sub.ID, day, sent); err != nil {

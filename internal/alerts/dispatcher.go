@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -181,6 +182,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event core.Event) error {
 				return ctx.Err()
 			}
 			d.log.Warn("alert not delivered", "chat", sub.ChatID, "event", event.ID, "err", err)
+			if errors.Is(err, core.ErrRecipientUnreachable) {
+				d.mark(ctx, sub.ID, event.ID, core.DeliverySkipped)
+				continue
+			}
 			d.mark(ctx, sub.ID, event.ID, core.DeliveryPending)
 			continue
 		}

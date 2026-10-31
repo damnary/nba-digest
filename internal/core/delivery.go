@@ -1,6 +1,11 @@
 package core
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrRecipientUnreachable = errors.New("recipient cannot be reached")
 
 type DeliveryStatus string
 

@@ -3,6 +3,8 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -458,5 +460,40 @@ func TestSplitMessageKeepsParagraphsIntact(t *testing.T) {
 	}
 	if strings.Join(parts, "\n\n") != long {
 		t.Error("splitting lost content")
+	}
+}
+
+func TestPermanentRejectionsAreMarkedUnreachable(t *testing.T) {
+	cases := []struct {
+		name        string
+		code        int
+		description string
+		gone        bool
+	}{
+		{"blocked", 403, "Forbidden: bot was blocked by the user", true},
+		{"deactivated", 403, "Forbidden: user is deactivated", true},
+		{"chat gone", 400, "Bad Request: chat not found", true},
+		{"bad markup", 400, "Bad Request: can't parse entities", false},
+		{"telegram down", 500, "Internal Server Error", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(fmt.Appendf(nil, `{"ok":false,"error_code":%d,"description":%q}`, tc.code, tc.description))
+			}))
+			defer srv.Close()
+
+			client := NewClient("token", WithBaseURL(srv.URL))
+			err := client.SendMessage(t.Context(), 1, "hi", nil)
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if got := errors.Is(err, core.ErrRecipientUnreachable); got != tc.gone {
+				t.Errorf("errors.Is(err, ErrRecipientUnreachable) = %v, want %v for %q", got, tc.gone, err)
+			}
+		})
 	}
 }
